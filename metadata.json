@@ -1,0 +1,6 @@
+{
+  "name": "FootyPredict - Multi-Target Football ML Platform",
+  "description": "Production-structured football prediction machine-learning platform with leakage-free temporal features, Dixon-Coles GLM, LightGBM, calibrated probabilities, and Node.js Bot API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

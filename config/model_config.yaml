@@ -1,0 +1,28 @@
+# Model Architecture & Hyperparameter Configuration
+models:
+  btts:
+    algorithm: "LightGBM"
+    n_estimators: 300
+    learning_rate: 0.03
+    max_depth: 5
+    calibration: "Platt_Scaling"
+  over_2_5:
+    algorithm: "LightGBM"
+    n_estimators: 350
+    learning_rate: 0.025
+    max_depth: 5
+    calibration: "Isotonic_Regression"
+  result_1x2:
+    algorithm: "Dixon_Coles_Ensemble"
+    dixon_coles_rho: -0.11
+    elo_k_factor: 24
+    home_advantage_elo: 65
+    calibration: "Platt_Scaling"
+  total_shots:
+    algorithm: "Ridge_Regressor"
+    alpha: 1.5
+    poisson_dispersion: 4.8
+validation:
+  strategy: "Chronological_Walk_Forward"
+  min_train_seasons: 2
+  test_window_months: 6
