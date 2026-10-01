@@ -364,6 +364,8 @@ export interface SquadIntelligenceProfile {
   news_bulletin: string;
   injury_attack_penalty: number;
   injury_defense_penalty: number;
+  key_players?: string[];
+  starting_roster?: string[];
 }
 
 export interface HistoricalH2HDetail {
