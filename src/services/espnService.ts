@@ -4,23 +4,74 @@
 // and formats all kickoff times into West Africa Time (WAT = UTC+1 / Africa/Lagos)
 // ============================================================================
 
-import { EspnMatchOfTheDay, EspnComprehensiveTeamData } from '../types';
+import { EspnMatchOfTheDay, EspnComprehensiveTeamData, EspnNewsArticle } from '../types';
 import { detectTeamLeague } from '../ml/teamProfiles';
 import { ingestMatchRecord, RAW_MATCH_RECORDS } from '../data/masterMatchDataset';
 import { getTeamSquadIntelligence, VERIFIED_TEAM_ROSTERS } from '../ml/squadIntelligence';
 import { lookupGenuineCoach } from '../data/genuineCoachesDatabase';
 
-export const ESPN_SOCCER_LEAGUES: Array<{ id: string; name: string; slug: string }> = [
-  { id: 'eng.1', name: 'English Premier League', slug: 'premier_league' },
-  { id: 'esp.1', name: 'Spanish La Liga', slug: 'la_liga' },
-  { id: 'ger.1', name: 'German Bundesliga', slug: 'bundesliga' },
-  { id: 'ita.1', name: 'Italian Serie A', slug: 'serie_a' },
-  { id: 'fra.1', name: 'French Ligue 1', slug: 'ligue_1' },
-  { id: 'uefa.champions', name: 'UEFA Champions League', slug: 'champions_league' },
-  { id: 'uefa.europa', name: 'UEFA Europa League', slug: 'europa_league' },
-  { id: 'por.1', name: 'Portuguese Primeira Liga', slug: 'primeira_liga' },
-  { id: 'ned.1', name: 'Dutch Eredivisie', slug: 'eredivisie' },
-  { id: 'caf.champions', name: 'CAF Champions League', slug: 'caf_champions' },
+export const ESPN_SOCCER_LEAGUES: Array<{ id: string; name: string; slug: string; region: string }> = [
+  // Top 5 European Leagues
+  { id: 'eng.1', name: 'English Premier League', slug: 'premier_league', region: 'England' },
+  { id: 'esp.1', name: 'Spanish La Liga', slug: 'la_liga', region: 'Spain' },
+  { id: 'ger.1', name: 'German Bundesliga', slug: 'bundesliga', region: 'Germany' },
+  { id: 'ita.1', name: 'Italian Serie A', slug: 'serie_a', region: 'Italy' },
+  { id: 'fra.1', name: 'French Ligue 1', slug: 'ligue_1', region: 'France' },
+
+  // Tier 2 European Leagues
+  { id: 'eng.2', name: 'English Championship', slug: 'championship', region: 'England' },
+  { id: 'esp.2', name: 'Spanish LaLiga 2', slug: 'la_liga_2', region: 'Spain' },
+  { id: 'ger.2', name: '2. Bundesliga', slug: 'bundesliga_2', region: 'Germany' },
+  { id: 'ita.2', name: 'Italian Serie B', slug: 'serie_b', region: 'Italy' },
+  { id: 'fra.2', name: 'French Ligue 2', slug: 'ligue_2', region: 'France' },
+
+  // Major European Domestic Competitions
+  { id: 'ned.1', name: 'Dutch Eredivisie', slug: 'eredivisie', region: 'Netherlands' },
+  { id: 'por.1', name: 'Portuguese Primeira Liga', slug: 'primeira_liga', region: 'Portugal' },
+  { id: 'bel.1', name: 'Belgian Pro League', slug: 'belgian_pro_league', region: 'Belgium' },
+  { id: 'tur.1', name: 'Turkish Super Lig', slug: 'turkish_super_lig', region: 'Turkey' },
+  { id: 'sco.1', name: 'Scottish Premiership', slug: 'scottish_premiership', region: 'Scotland' },
+  { id: 'aut.1', name: 'Austrian Bundesliga', slug: 'austrian_bundesliga', region: 'Austria' },
+  { id: 'sui.1', name: 'Swiss Super League', slug: 'swiss_super_league', region: 'Switzerland' },
+  { id: 'den.1', name: 'Danish Superliga', slug: 'danish_superliga', region: 'Denmark' },
+  { id: 'gre.1', name: 'Greek Super League', slug: 'greek_super_league', region: 'Greece' },
+
+  // European & Global Tournaments
+  { id: 'uefa.champions', name: 'UEFA Champions League', slug: 'champions_league', region: 'Europe' },
+  { id: 'uefa.europa', name: 'UEFA Europa League', slug: 'europa_league', region: 'Europe' },
+  { id: 'uefa.europa.conf', name: 'UEFA Conference League', slug: 'europa_conf_league', region: 'Europe' },
+  { id: 'uefa.nations', name: 'UEFA Nations League', slug: 'uefa_nations_league', region: 'Europe' },
+  { id: 'uefa.wchampion', name: "UEFA Women's Champions League", slug: 'womens_champions_league', region: 'Europe' },
+  { id: 'uefa.euro', name: 'UEFA European Championship', slug: 'uefa_euro', region: 'Europe' },
+
+  // Americas (North, Central, South)
+  { id: 'usa.1', name: 'Major League Soccer (MLS)', slug: 'mls', region: 'USA' },
+  { id: 'usa.nwsl', name: 'NWSL (USA Women)', slug: 'nwsl', region: 'USA' },
+  { id: 'mex.1', name: 'Liga MX', slug: 'liga_mx', region: 'Mexico' },
+  { id: 'bra.1', name: 'Brazilian Serie A', slug: 'brazil_serie_a', region: 'Brazil' },
+  { id: 'bra.2', name: 'Brazilian Serie B', slug: 'brazil_serie_b', region: 'Brazil' },
+  { id: 'arg.1', name: 'Argentine Liga Profesional', slug: 'arg_primera', region: 'Argentina' },
+  { id: 'arg.copa', name: 'Copa Argentina', slug: 'copa_argentina', region: 'Argentina' },
+  { id: 'col.1', name: 'Colombian Primera A', slug: 'colombia_primera', region: 'Colombia' },
+  { id: 'chi.1', name: 'Chilean Primera Division', slug: 'chile_primera', region: 'Chile' },
+  { id: 'conmebol.libertadores', name: 'Copa Libertadores', slug: 'copa_libertadores', region: 'South America' },
+  { id: 'conmebol.sudamericana', name: 'Copa Sudamericana', slug: 'copa_sudamericana', region: 'South America' },
+  { id: 'concacaf.nations', name: 'Concacaf Nations League', slug: 'concacaf_nations', region: 'North America' },
+  { id: 'concacaf.champions', name: 'Concacaf Champions Cup', slug: 'concacaf_champions', region: 'North America' },
+
+  // Africa, Asia & Middle East
+  { id: 'caf.champions', name: 'CAF Champions League', slug: 'caf_champions', region: 'Africa' },
+  { id: 'caf.nations', name: 'Africa Cup of Nations', slug: 'afcon', region: 'Africa' },
+  { id: 'caf.nations_qual', name: 'AFCON Qualifiers', slug: 'afcon_qual', region: 'Africa' },
+  { id: 'afc.champions', name: 'AFC Champions League Elite', slug: 'afc_champions', region: 'Asia' },
+  { id: 'afc.asian_cup', name: 'AFC Asian Cup', slug: 'asian_cup', region: 'Asia' },
+  { id: 'sau.1', name: 'Saudi Pro League', slug: 'saudi_pro_league', region: 'Saudi Arabia' },
+  { id: 'jpn.1', name: 'J1 League', slug: 'j1_league', region: 'Japan' },
+  { id: 'aus.1', name: 'Australian A-League', slug: 'a_league', region: 'Australia' },
+
+  // International & FIFA
+  { id: 'fifa.world', name: 'FIFA World Cup', slug: 'world_cup', region: 'International' },
+  { id: 'fifa.friendly', name: 'International Friendly', slug: 'international_friendly', region: 'International' },
 ];
 
 /**
@@ -849,11 +900,12 @@ export async function fetchEspnTeamPastMatches(
 
 /**
  * Synchronizes and populates the master dataset with thousands of real historical match records
- * across seasons (2024, 2025, 2026) directly from official ESPN Scoreboard & Core API endpoints.
+ * across seasons (2024, 2025, 2026) directly from official ESPN Scoreboard & Core API endpoints
+ * across ALL global football leagues.
  */
 export async function syncEspnHistoricalDataset(
   seasons: string[] = ['2024', '2025', '2026'],
-  leagues: string[] = ['eng.1', 'esp.1', 'ger.1', 'ita.1', 'fra.1', 'uefa.champions', 'uefa.europa', 'ned.1', 'por.1', 'usa.1']
+  leagues: string[] = ESPN_SOCCER_LEAGUES.map((l) => l.id)
 ): Promise<{
   totalSynced: number;
   newMatchesIngested: number;
@@ -944,3 +996,101 @@ export async function syncEspnHistoricalDataset(
     leaguesQueried: leagues,
   };
 }
+
+/**
+ * Fetches latest breaking news, transfer rumors, match reviews, and press happenings
+ * directly from official ESPN News endpoints for a specific league or globally.
+ */
+export async function fetchEspnLatestNews(
+  leagueCode: string = 'eng.1',
+  limit: number = 10
+): Promise<EspnNewsArticle[]> {
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${leagueCode}/news`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 FootyPredict/2.0' } });
+    if (res.ok) {
+      const data = await res.json();
+      const articles = data.articles || [];
+
+      return articles.slice(0, limit).map((a: any) => {
+        const relatedTeams: string[] = [];
+        if (Array.isArray(a.categories)) {
+          a.categories.forEach((cat: any) => {
+            if (cat.type === 'team' && cat.description) {
+              relatedTeams.push(cat.description);
+            }
+          });
+        }
+
+        const imgObj = Array.isArray(a.images) && a.images.length > 0 ? a.images[0] : null;
+
+        return {
+          id: a.id || a.nowId || Math.random().toString(),
+          headline: a.headline || 'Breaking Football News',
+          description: a.description || '',
+          published: a.published || new Date().toISOString(),
+          byline: a.byline || 'ESPN Staff',
+          web_url: a.links?.web?.href || a.links?.mobile?.href || '',
+          image_url: imgObj?.url || '',
+          league: leagueCode,
+          related_teams: relatedTeams,
+        };
+      });
+    }
+  } catch {
+    // Continue gracefully
+  }
+  return [];
+}
+
+/**
+ * Fetches aggregated top breaking football news across major global leagues.
+ */
+export async function fetchEspnAllBreakingNews(limitPerLeague: number = 4): Promise<EspnNewsArticle[]> {
+  const targetLeagues = [
+    'eng.1',
+    'esp.1',
+    'uefa.champions',
+    'ger.1',
+    'ita.1',
+    'fra.1',
+    'usa.1',
+    'conmebol.libertadores',
+    'caf.nations',
+  ];
+
+  const allArticles: EspnNewsArticle[] = [];
+  const seenHeadlines = new Set<string>();
+
+  const promises = targetLeagues.map(async (l) => {
+    const articles = await fetchEspnLatestNews(l, limitPerLeague);
+    articles.forEach((art) => {
+      const key = art.headline.toLowerCase().trim();
+      if (!seenHeadlines.has(key)) {
+        seenHeadlines.add(key);
+        allArticles.push(art);
+      }
+    });
+  });
+
+  await Promise.allSettled(promises);
+
+  // Sort newest first
+  return allArticles.sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
+}
+
+/**
+ * Fetches news specifically related to a club or national team
+ */
+export async function fetchEspnTeamLatestNews(teamName: string): Promise<EspnNewsArticle[]> {
+  const allNews = await fetchEspnAllBreakingNews(6);
+  const search = teamName.toLowerCase();
+
+  return allNews.filter(
+    (art) =>
+      art.headline.toLowerCase().includes(search) ||
+      art.description.toLowerCase().includes(search) ||
+      (art.related_teams && art.related_teams.some((t) => t.toLowerCase().includes(search)))
+  );
+}
+

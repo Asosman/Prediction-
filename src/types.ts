@@ -712,3 +712,16 @@ export interface DatasetCoverageReport {
     shots_available_pct: number;
   }>;
 }
+
+export interface EspnNewsArticle {
+  id: string | number;
+  headline: string;
+  description: string;
+  published: string;
+  byline?: string;
+  web_url?: string;
+  image_url?: string;
+  league?: string;
+  related_teams?: string[];
+}
+

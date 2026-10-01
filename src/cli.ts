@@ -24,6 +24,7 @@ import {
   fetchEspnTeamComprehensiveData,
   fetchEspnTeamPastMatches,
   syncEspnHistoricalDataset,
+  fetchEspnAllBreakingNews,
 } from './services/espnService';
 import {
   generateTodaysTenOddsBatches,
@@ -459,6 +460,33 @@ async function runCustomMatchupInteractive() {
 }
 
 /**
+ * Interactive ESPN Breaking News Viewer
+ */
+async function runNewsInteractive() {
+  console.log(`\n${c.bold}${c.green}📰 FETCHING LIVE BREAKING FOOTBALL HAPPENINGS FROM ESPN ENDPOINTS...${c.reset}\n`);
+  const articles = await fetchEspnAllBreakingNews(4);
+
+  if (articles.length === 0) {
+    console.log(`  ${c.yellow}No news articles currently returned from ESPN news stream.${c.reset}`);
+  } else {
+    articles.forEach((art, idx) => {
+      console.log(`  ${c.bold}${c.cyan}[${idx + 1}] ${art.headline}${c.reset}`);
+      if (art.description) {
+        console.log(`      ${c.dim}${art.description}${c.reset}`);
+      }
+      const dateFormatted = new Date(art.published).toLocaleString();
+      console.log(`      ${c.gray}Published: ${dateFormatted} | Source: ${art.byline || 'ESPN'} | League: ${art.league?.toUpperCase() || 'SOCCER'}${c.reset}`);
+      if (art.web_url) {
+        console.log(`      ${c.dim}Link: ${art.web_url}${c.reset}`);
+      }
+      console.log('');
+    });
+  }
+
+  await promptUser('Press [ENTER] to return to Main Menu...');
+}
+
+/**
  * Main Interactive Navigation Menu Loop
  */
 async function runInteractiveMenu() {
@@ -472,11 +500,12 @@ ${c.bold}┌──────────────────────�
   ${c.bold}${c.green}[2]${c.reset} 🏆 View Yesterday's Predictions Outcome & Success Indicators
   ${c.bold}${c.green}[3]${c.reset} 🔍 Direct Match Forensics, Squad & Last 5 Matches Lookup
   ${c.bold}${c.green}[4]${c.reset} ⚡ Run Temporal Walk-Forward Out-of-Sample Backtest
-  ${c.bold}${c.green}[5]${c.reset} 🌐 View Global Data Lake Coverage Audit
+  ${c.bold}${c.green}[5]${c.reset} 🌐 View Global Data Lake Coverage Audit (All Football Leagues)
+  ${c.bold}${c.green}[6]${c.reset} 📰 ESPN Breaking News & Latest Football Happenings
   ${c.bold}${c.red}[0]${c.reset} 🚪 Exit
 `);
 
-    const choice = await promptUser(`  ${c.bold}👉 Select an option (1, 2, 3, 4, 5, 0): ${c.reset}`);
+    const choice = await promptUser(`  ${c.bold}👉 Select an option (1, 2, 3, 4, 5, 6, 0): ${c.reset}`);
 
     if (choice === '1') {
       await runTodayBatchesInteractive();
@@ -494,7 +523,7 @@ ${c.bold}┌──────────────────────�
       console.log(`  • Shots Regression MAE:     ${res.overall.shots_mae.toFixed(2)} shots`);
       await promptUser('\nPress [ENTER] to return to Main Menu...');
     } else if (choice === '5') {
-      console.log(`\n${c.bold}SYNCING GLOBAL HISTORICAL DATA LAKE FROM ESPN ENDPOINTS...${c.reset}`);
+      console.log(`\n${c.bold}SYNCING GLOBAL HISTORICAL DATA LAKE ACROSS ALL FOOTBALL LEAGUES FROM ESPN...${c.reset}`);
       const syncRes = await syncEspnHistoricalDataset(['2024', '2025', '2026']);
       console.log(`  • ESPN Endpoints Queried:   ${syncRes.leaguesQueried.length} Leagues across ${syncRes.seasonsQueried.join(', ')}`);
       console.log(`  • New Matches Ingested:     ${c.green}+${syncRes.newMatchesIngested} Real Historical Matches${c.reset}`);
@@ -504,11 +533,13 @@ ${c.bold}┌──────────────────────�
       console.log(`  • Matches with Full xG:    ${c.green}${cov.matches_with_xg}${c.reset} (${Math.round((cov.matches_with_xg / Math.max(1, cov.played_fixtures)) * 100)}% coverage)`);
       console.log(`  • Date Range:              ${cov.date_range.min_date} to ${cov.date_range.max_date}`);
       await promptUser('\nPress [ENTER] to return to Main Menu...');
+    } else if (choice === '6') {
+      await runNewsInteractive();
     } else if (choice === '0' || choice.toLowerCase() === 'q' || choice.toLowerCase() === 'exit') {
       console.log(`\n${c.green}Thank you for using FootyPredict ML CLI. Goodbye!${c.reset}\n`);
       break;
     } else {
-      console.log(`${c.red}Invalid option. Please choose from 1, 2, 3, 4, 5, or 0.${c.reset}`);
+      console.log(`${c.red}Invalid option. Please choose from 1, 2, 3, 4, 5, 6, or 0.${c.reset}`);
     }
   }
 }
@@ -535,6 +566,12 @@ async function runCli() {
   if (args.includes('--today') || args.includes('--batches')) {
     printBanner();
     await runTodayBatchesInteractive();
+    return;
+  }
+
+  if (args.includes('--news') || args.includes('--happenings')) {
+    printBanner();
+    await runNewsInteractive();
     return;
   }
 
