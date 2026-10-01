@@ -354,7 +354,11 @@ export function buildTenOddsBatches(
 /**
  * Fetches today's live ESPN matches and generates fresh 10-Odds Batches
  */
-export async function generateTodaysTenOddsBatches(): Promise<{ batches: OddsBatch[]; matchesCount: number }> {
+export async function generateTodaysTenOddsBatches(): Promise<{
+  batches: OddsBatch[];
+  matchesCount: number;
+  allMatches: EspnMatchOfTheDay[];
+}> {
   const currentWat = getCurrentDateInWAT();
   const espnFeed = await fetchEspnMatchesOfTheDay(currentWat.yyyymmdd);
   const matches = espnFeed.matches || [];
@@ -388,6 +392,7 @@ export async function generateTodaysTenOddsBatches(): Promise<{ batches: OddsBat
   return {
     batches,
     matchesCount: matches.length,
+    allMatches: matches,
   };
 }
 

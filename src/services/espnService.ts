@@ -407,6 +407,8 @@ const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes cache
 
 /**
  * Fetches all necessary intelligence data for a team directly from ESPN endpoints:
+ * - Specific Core API team/coach endpoint: https://sports.core.api.espn.com/v2/sports/soccer/leagues/{league}/teams/{team_id}
+ * - Real-time roster and injury synchronization: https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/teams/{team_id}/roster
  * - Coaches and coaching philosophy
  * - Players and full active roster
  * - Home performance & Away performance splits
@@ -414,20 +416,77 @@ const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes cache
  * - Dressing room atmosphere (peace vs crisis/chaos)
  * - Multi-horizon form (Last 3, 5, 10 matches)
  * - Disciplinary telemetry (Red cards, yellow cards, fouls)
+ *
+ * Overwrites stale local cache entries with live ESPN data.
  */
 export async function fetchEspnTeamComprehensiveData(
   teamName: string,
-  leagueName?: string
+  leagueName?: string,
+  forceRefresh: boolean = true
 ): Promise<EspnComprehensiveTeamData> {
   const cacheKey = `${teamName.toLowerCase().trim()}_${(leagueName || '').toLowerCase().trim()}`;
   const cached = ESPN_TEAM_DATA_CACHE.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
   }
 
   const detectedLeague = leagueName || detectTeamLeague(teamName, '');
   const squadProfile = getTeamSquadIntelligence(teamName, detectedLeague);
   const genuineCoach = lookupGenuineCoach(teamName, detectedLeague);
+
+  // Live ESPN Core API Telemetry Container
+  let liveRoster: Array<{ name: string; position: string; jersey: string }> = [];
+  let liveKeyPlayers: string[] = [];
+  let liveInjuries: Array<{ player_name: string; position: 'GK' | 'DEF' | 'MID' | 'FWD'; status: 'Out' | 'Doubtful' | 'Questionable'; reason: string; impact_factor: number }> = [];
+
+  try {
+    const discovered = await discoverEspnTeamId(teamName, detectedLeague);
+    if (discovered && discovered.id) {
+      // 1. Specific ESPN Core Team Endpoint
+      const coreTeamUrl = `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${discovered.leagueCode}/teams/${discovered.id}`;
+      // 2. ESPN Site Roster & Injuries Endpoint
+      const rosterUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${discovered.leagueCode}/teams/${discovered.id}/roster`;
+
+      const [coreRes, rosterRes] = await Promise.allSettled([
+        fetch(coreTeamUrl, { headers: { 'User-Agent': 'Mozilla/5.0 FootyPredict/2.0' } }),
+        fetch(rosterUrl, { headers: { 'User-Agent': 'Mozilla/5.0 FootyPredict/2.0' } }),
+      ]);
+
+      if (rosterRes.status === 'fulfilled' && rosterRes.value.ok) {
+        const rosterData = await rosterRes.value.json();
+        const athletes = rosterData.athletes || [];
+
+        if (Array.isArray(athletes) && athletes.length > 0) {
+          liveRoster = athletes.map((a: any) => ({
+            name: a.displayName || a.fullName || 'Player',
+            position: a.position?.displayName || 'Player',
+            jersey: a.jersey || `${(a.id % 30) + 1}`,
+          }));
+
+          // Pick top starters as key players
+          liveKeyPlayers = liveRoster.slice(0, 5).map((p) => p.name);
+
+          // Extract live injuries from ESPN
+          athletes.forEach((a: any) => {
+            if (a.injuries && Array.isArray(a.injuries) && a.injuries.length > 0) {
+              const inj = a.injuries[0];
+              const posType = (a.position?.displayName || '').toLowerCase();
+              const posCode: 'GK' | 'DEF' | 'MID' | 'FWD' = posType.includes('goal') ? 'GK' : posType.includes('def') ? 'DEF' : posType.includes('mid') ? 'MID' : 'FWD';
+              liveInjuries.push({
+                player_name: a.displayName || a.fullName,
+                position: posCode,
+                status: inj.status === 'Active' ? 'Questionable' : 'Out',
+                reason: inj.details?.type || inj.description || 'Injury under medical review',
+                impact_factor: -0.08,
+              });
+            }
+          });
+        }
+      }
+    }
+  } catch {
+    // Continue with local intelligence if endpoint unreachable
+  }
 
   // Compute Home vs Away splits from historical played matches
   const homeGames = RAW_MATCH_RECORDS.filter(
@@ -508,14 +567,20 @@ export async function fetchEspnTeamComprehensiveData(
     harmonyReport = `Significant dressing room unrest and media speculation over tactical structure and squad rotation.`;
   }
 
-  // Key players & injuries
-  const keyPlayers = squadProfile.key_players || [`${teamName} Captain (C)`, `${teamName} Playmaker`, `${teamName} Lead Striker`];
-  const injuriesAndSuspensions = (squadProfile.injuries || []).map((i) => ({
+  // Key players & injuries combining live ESPN data with squad profile
+  const keyPlayers = liveKeyPlayers.length > 0 ? liveKeyPlayers : squadProfile.key_players || [`${teamName} Captain (C)`, `${teamName} Playmaker`, `${teamName} Lead Striker`];
+  const finalInjuries = liveInjuries.length > 0 ? liveInjuries : (squadProfile.injuries || []).map((i) => ({
     player_name: i.player_name,
     position: i.position,
     status: (i.status === 'Out' ? 'Out' : i.status === 'Doubtful' ? 'Doubtful' : 'Questionable') as any,
     reason: i.reason,
     impact_factor: i.impact_score,
+  }));
+
+  const fullRoster = liveRoster.length > 0 ? liveRoster : keyPlayers.map((p, idx) => ({
+    name: p,
+    position: idx === 0 ? 'Defender / Captain' : idx % 2 === 0 ? 'Midfielder' : 'Forward',
+    jersey: `${(idx * 7 + 4) % 30 + 1}`,
   }));
 
   const comprehensiveData: EspnComprehensiveTeamData = {
@@ -529,17 +594,13 @@ export async function fetchEspnTeamComprehensiveData(
       tactical_philosophy: squadProfile.coach.tactical_style,
     },
     key_players: keyPlayers,
-    full_roster: keyPlayers.map((p, idx) => ({
-      name: p,
-      position: idx === 0 ? 'Defender / Captain' : idx % 2 === 0 ? 'Midfielder' : 'Forward',
-      jersey: `${(idx * 7 + 4) % 30 + 1}`,
-    })),
+    full_roster: fullRoster,
     dressing_room: {
       status: dressingStatus,
       morale_index: squadProfile.morale_score,
       harmony_report: harmonyReport,
     },
-    injuries_and_suspensions: injuriesAndSuspensions,
+    injuries_and_suspensions: finalInjuries,
     home_performance: {
       matches_played: homeGames.length,
       wins: homeWins,
@@ -572,6 +633,7 @@ export async function fetchEspnTeamComprehensiveData(
     },
   };
 
+  // Overwrite stale local cache with fresh real-time synchronized payload
   ESPN_TEAM_DATA_CACHE.set(cacheKey, { timestamp: Date.now(), data: comprehensiveData });
   return comprehensiveData;
 }

@@ -238,8 +238,8 @@ function promptUser(query: string): Promise<string> {
  */
 async function runTodayBatchesInteractive() {
   console.log(`\n${c.bold}${c.green}🔥 GENERATING TODAY'S 10-ODDS PREDICTION BATCHES...${c.reset}`);
-  const { batches, matchesCount } = await generateTodaysTenOddsBatches();
-  console.log(`   Ingested ${c.cyan}${matchesCount}${c.reset} live fixtures. Produced ${c.green}${batches.length}${c.reset} optimal ~10.00x Odds Batches.`);
+  const { batches, matchesCount, allMatches } = await generateTodaysTenOddsBatches();
+  console.log(`   Ingested ${c.cyan}${matchesCount}${c.reset} live fixtures directly from ESPN endpoints. Produced ${c.green}${batches.length}${c.reset} optimal ~10.00x Odds Batches.`);
 
   batches.forEach((b) => {
     console.log(`\n${c.bold}${c.magenta}📦 BATCH ID: ${b.batch_id} — ${b.batch_title.toUpperCase()}${c.reset}`);
@@ -261,22 +261,31 @@ async function runTodayBatchesInteractive() {
     console.log(`   ${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
   });
 
-  // Extract distinct list of today's matches for drilldown
-  const matchList: Array<{ home: string; away: string; league: string; date: string }> = [];
-  batches.forEach((b) => {
-    b.legs.forEach((l) => {
-      if (!matchList.some((m) => m.home === l.home_team && m.away === l.away_team)) {
-        matchList.push({
-          home: l.home_team,
-          away: l.away_team,
-          league: l.league,
-          date: l.date,
-        });
-      }
-    });
-  });
+  // Extract complete list of all today's matches fetched from ESPN endpoints for drilldown
+  const matchList: Array<{ home: string; away: string; league: string; date: string }> = (allMatches || []).map((m) => ({
+    home: m.home_team,
+    away: m.away_team,
+    league: m.league_name,
+    date: m.date_wat,
+  }));
 
-  console.log(`\n${c.bold}📋 TODAY'S MATCHES AVAILABLE FOR IN-DEPTH FORENSIC DRILLDOWN:${c.reset}`);
+  // Fallback if allMatches was empty
+  if (matchList.length === 0) {
+    batches.forEach((b) => {
+      b.legs.forEach((l) => {
+        if (!matchList.some((m) => m.home === l.home_team && m.away === l.away_team)) {
+          matchList.push({
+            home: l.home_team,
+            away: l.away_team,
+            league: l.league,
+            date: l.date,
+          });
+        }
+      });
+    });
+  }
+
+  console.log(`\n${c.bold}📋 ALL TODAY'S MATCHES FETCHED FROM ESPN (${matchList.length} FIXTURES AVAILABLE FOR DRILLDOWN):${c.reset}`);
   matchList.forEach((m, idx) => {
     console.log(`  [${c.cyan}${idx + 1}${c.reset}] ${m.home} vs ${m.away} ${c.dim}(${m.league})${c.reset}`);
   });
