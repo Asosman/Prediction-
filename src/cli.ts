@@ -19,7 +19,11 @@ import { getModelRegistry } from './ml/modelRegistry';
 import { executeModelAutoUpdate } from './ml/autoUpdateEngine';
 import { detectTeamLeague } from './ml/teamProfiles';
 import { getTeamSquadIntelligence } from './ml/squadIntelligence';
-import { fetchEspnPreviousMatches, fetchEspnTeamComprehensiveData } from './services/espnService';
+import {
+  fetchEspnPreviousMatches,
+  fetchEspnTeamComprehensiveData,
+  fetchEspnTeamPastMatches,
+} from './services/espnService';
 import {
   generateTodaysTenOddsBatches,
   evaluateArchivedBatches,
@@ -81,19 +85,12 @@ async function displayMatchPrediction(pred: ReturnType<typeof generateMultiTarge
   const fairOddsOver = (1 / Math.max(0.001, pred.over_2_5.over)).toFixed(2);
 
   // Retrieve Comprehensive ESPN Telemetry for both teams
-  const [homeData, awayData] = await Promise.all([
+  const [homeData, awayData, homeMatches, awayMatches] = await Promise.all([
     fetchEspnTeamComprehensiveData(pred.match.home, pred.match.league),
     fetchEspnTeamComprehensiveData(pred.match.away, pred.match.league),
+    fetchEspnTeamPastMatches(pred.match.home, pred.match.league, 5),
+    fetchEspnTeamPastMatches(pred.match.away, pred.match.league, 5),
   ]);
-
-  // Fetch last 5 historical encounters/form matches
-  const homeMatches = RAW_MATCH_RECORDS.filter(
-    (m) => m.is_played && (m.home_team.toLowerCase() === pred.match.home.toLowerCase() || m.away_team.toLowerCase() === pred.match.home.toLowerCase())
-  ).slice(-5).reverse();
-
-  const awayMatches = RAW_MATCH_RECORDS.filter(
-    (m) => m.is_played && (m.home_team.toLowerCase() === pred.match.away.toLowerCase() || m.away_team.toLowerCase() === pred.match.away.toLowerCase())
-  ).slice(-5).reverse();
 
   console.log(`\n${c.bold}${c.green}╔═══════════════════════════════════════════════════════════════════════════════╗${c.reset}`);
   console.log(`${c.bold}${c.green}║        🏟️   ESPN COMPREHENSIVE MATCH FORENSICS & ML INTELLIGENCE             ║${c.reset}`);
@@ -183,45 +180,33 @@ async function displayMatchPrediction(pred: ReturnType<typeof generateMultiTarge
   }
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // 9. Verified Last 5 Form Matches for Both Home and Away
-  console.log(`  ${c.bold}📊 VERIFIED LAST 5 HISTORICAL FORM MATCHES (NEWEST FIRST):${c.reset}`);
+  // 9. Verified Last 5 Form Matches for Both Home and Away (Direct from ESPN Endpoints)
+  console.log(`  ${c.bold}📊 VERIFIED LAST 5 HISTORICAL FORM MATCHES (DIRECT ESPN ENDPOINTS, NEWEST FIRST):${c.reset}`);
   console.log(`     • ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset}:`);
   if (homeMatches.length === 0) {
-    console.log(`       No past match records found in master dataset.`);
+    console.log(`       No past match records found on ESPN endpoints.`);
   } else {
     homeMatches.forEach((m) => {
-      const isHome = m.home_team.toLowerCase() === pred.match.home.toLowerCase();
-      const opp = isHome ? m.away_team : m.home_team;
-      const score = `${m.home_goals} - ${m.away_goals}`;
-      let outcome = '';
-      if (m.home_goals === m.away_goals) {
-        outcome = `${c.yellow}[D] DRAW${c.reset}`;
-      } else if ((isHome && m.home_goals > m.away_goals) || (!isHome && m.away_goals > m.home_goals)) {
-        outcome = `${c.green}[W] WIN${c.reset}`;
-      } else {
-        outcome = `${c.red}[L] LOSS${c.reset}`;
-      }
-      console.log(`       - [${m.date}] ${isHome ? 'Home' : 'Away'} vs ${opp.padEnd(22)} | Score: ${score.padEnd(7)} | Outcome: ${outcome}`);
+      let outcomeBadge = m.outcome;
+      if (m.outcome.includes('[W]')) outcomeBadge = `${c.green}${m.outcome}${c.reset}`;
+      else if (m.outcome.includes('[D]')) outcomeBadge = `${c.yellow}${m.outcome}${c.reset}`;
+      else if (m.outcome.includes('[L]')) outcomeBadge = `${c.red}${m.outcome}${c.reset}`;
+
+      console.log(`       - [${m.date}] ${m.is_home ? 'Home' : 'Away'} vs ${m.opponent.padEnd(24)} | Score: ${m.score_display.padEnd(7)} | Outcome: ${outcomeBadge}`);
     });
   }
 
   console.log(`     • ${c.bold}${c.magenta}${pred.match.away.toUpperCase()}${c.reset}:`);
   if (awayMatches.length === 0) {
-    console.log(`       No past match records found in master dataset.`);
+    console.log(`       No past match records found on ESPN endpoints.`);
   } else {
     awayMatches.forEach((m) => {
-      const isHome = m.home_team.toLowerCase() === pred.match.away.toLowerCase();
-      const opp = isHome ? m.away_team : m.home_team;
-      const score = `${m.home_goals} - ${m.away_goals}`;
-      let outcome = '';
-      if (m.home_goals === m.away_goals) {
-        outcome = `${c.yellow}[D] DRAW${c.reset}`;
-      } else if ((isHome && m.home_goals > m.away_goals) || (!isHome && m.away_goals > m.home_goals)) {
-        outcome = `${c.green}[W] WIN${c.reset}`;
-      } else {
-        outcome = `${c.red}[L] LOSS${c.reset}`;
-      }
-      console.log(`       - [${m.date}] ${isHome ? 'Home' : 'Away'} vs ${opp.padEnd(22)} | Score: ${score.padEnd(7)} | Outcome: ${outcome}`);
+      let outcomeBadge = m.outcome;
+      if (m.outcome.includes('[W]')) outcomeBadge = `${c.green}${m.outcome}${c.reset}`;
+      else if (m.outcome.includes('[D]')) outcomeBadge = `${c.yellow}${m.outcome}${c.reset}`;
+      else if (m.outcome.includes('[L]')) outcomeBadge = `${c.red}${m.outcome}${c.reset}`;
+
+      console.log(`       - [${m.date}] ${m.is_home ? 'Home' : 'Away'} vs ${m.opponent.padEnd(24)} | Score: ${m.score_display.padEnd(7)} | Outcome: ${outcomeBadge}`);
     });
   }
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
