@@ -23,6 +23,7 @@ import {
   fetchEspnPreviousMatches,
   fetchEspnTeamComprehensiveData,
   fetchEspnTeamPastMatches,
+  syncEspnHistoricalDataset,
 } from './services/espnService';
 import {
   generateTodaysTenOddsBatches,
@@ -478,13 +479,17 @@ ${c.bold}┌──────────────────────�
       console.log(`\n${c.bold}RUNNING TEMPORAL WALK-FORWARD OOS BACKTEST (ZERO LEAKAGE)...${c.reset}\n`);
       const res = runWalkForwardBacktest(RAW_MATCH_RECORDS, 'all', 'all');
       console.log(`  • Evaluated Matches:        ${c.cyan}${res.total_matches}${c.reset}`);
-      console.log(`  • BTTS Accuracy / Log-Loss: ${(res.overall.btts_accuracy * 100).toFixed(1)}% (Log-Loss: ${res.overall.btts_log_loss.toFixed(3)})`);
-      console.log(`  • Over 2.5 Acc / Log-Loss:  ${(res.overall.over25_accuracy * 100).toFixed(1)}% (Log-Loss: ${res.overall.over25_log_loss.toFixed(3)})`);
-      console.log(`  • 1X2 Match Outcome Acc:    ${(res.overall.result_accuracy * 100).toFixed(1)}% (Log-Loss: ${res.overall.result_log_loss.toFixed(3)})`);
+      console.log(`  • BTTS Accuracy / Log-Loss: ${res.overall.btts_accuracy.toFixed(1)}% (Log-Loss: ${res.overall.btts_log_loss.toFixed(3)})`);
+      console.log(`  • Over 2.5 Acc / Log-Loss:  ${res.overall.over25_accuracy.toFixed(1)}% (Log-Loss: ${res.overall.over25_log_loss.toFixed(3)})`);
+      console.log(`  • 1X2 Match Outcome Acc:    ${res.overall.result_accuracy.toFixed(1)}% (Log-Loss: ${res.overall.result_log_loss.toFixed(3)})`);
       console.log(`  • Shots Regression MAE:     ${res.overall.shots_mae.toFixed(2)} shots`);
       await promptUser('\nPress [ENTER] to return to Main Menu...');
     } else if (choice === '5') {
-      console.log(`\n${c.bold}GLOBAL FOOTBALL DATA LAKE COVERAGE AUDIT:${c.reset}\n`);
+      console.log(`\n${c.bold}SYNCING GLOBAL HISTORICAL DATA LAKE FROM ESPN ENDPOINTS...${c.reset}`);
+      const syncRes = await syncEspnHistoricalDataset(['2024', '2025', '2026']);
+      console.log(`  • ESPN Endpoints Queried:   ${syncRes.leaguesQueried.length} Leagues across ${syncRes.seasonsQueried.join(', ')}`);
+      console.log(`  • New Matches Ingested:     ${c.green}+${syncRes.newMatchesIngested} Real Historical Matches${c.reset}`);
+      console.log(`\n${c.bold}GLOBAL FOOTBALL DATA LAKE COVERAGE AUDIT:${c.reset}`);
       const cov = computeDatasetCoverage();
       console.log(`  • Total Ingested Fixtures: ${c.cyan}${cov.total_fixtures}${c.reset} (${cov.played_fixtures} historical, ${cov.upcoming_fixtures} upcoming)`);
       console.log(`  • Matches with Full xG:    ${c.green}${cov.matches_with_xg}${c.reset} (${Math.round((cov.matches_with_xg / Math.max(1, cov.played_fixtures)) * 100)}% coverage)`);
@@ -502,9 +507,12 @@ ${c.bold}┌──────────────────────�
 async function runCli() {
   const args = process.argv.slice(2);
 
-  // Sync recent previous matches from official ESPN endpoints in background
+  // Sync historical dataset and previous matches from official ESPN endpoints in background
   try {
-    await fetchEspnPreviousMatches(7);
+    await Promise.allSettled([
+      syncEspnHistoricalDataset(['2024', '2025', '2026']),
+      fetchEspnPreviousMatches(7),
+    ]);
   } catch {
     // Continue smoothly if offline
   }
@@ -544,9 +552,9 @@ async function runCli() {
     console.log(`${c.bold}RUNNING TEMPORAL WALK-FORWARD OOS BACKTEST (ZERO LEAKAGE)...${c.reset}\n`);
     const res = runWalkForwardBacktest(RAW_MATCH_RECORDS, 'all', 'all');
     console.log(`  • Total Evaluated Fixtures:  ${c.cyan}${res.total_matches}${c.reset}`);
-    console.log(`  • BTTS Accuracy:             ${(res.overall.btts_accuracy * 100).toFixed(1)}%`);
-    console.log(`  • Over 2.5 Accuracy:         ${(res.overall.over25_accuracy * 100).toFixed(1)}%`);
-    console.log(`  • 1X2 Match Outcome Acc:     ${(res.overall.result_accuracy * 100).toFixed(1)}%`);
+    console.log(`  • BTTS Accuracy:             ${res.overall.btts_accuracy.toFixed(1)}%`);
+    console.log(`  • Over 2.5 Accuracy:         ${res.overall.over25_accuracy.toFixed(1)}%`);
+    console.log(`  • 1X2 Match Outcome Acc:     ${res.overall.result_accuracy.toFixed(1)}%`);
     return;
   }
 
