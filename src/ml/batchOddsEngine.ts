@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 import { MultiTargetPrediction, EspnMatchOfTheDay } from '../types';
 import { extractPreMatchFeatures } from './featureEngineering';
 import { generateMultiTargetPrediction } from './predictionEngine';
-import { fetchEspnMatchesOfTheDay, getCurrentDateInWAT } from '../services/espnService';
+import { fetchEspnMatchesOfTheDay, fetchEspnPreviousMatches, getCurrentDateInWAT } from '../services/espnService';
 import { RAW_MATCH_RECORDS } from '../data/masterMatchDataset';
 import { getTeamSquadIntelligence } from './squadIntelligence';
 
@@ -464,14 +464,15 @@ export async function evaluateArchivedBatches(): Promise<{
   const batches = loadArchivedBatches();
   const currentWat = getCurrentDateInWAT();
 
-  // Also query ESPN scoreboard for actual results
+  // Also query ESPN live and previous matches scoreboard for actual real-world results
+  const { pastMatches } = await fetchEspnPreviousMatches(5);
   const espnFeed = await fetchEspnMatchesOfTheDay(currentWat.yyyymmdd);
-  const espnMatches = espnFeed.matches || [];
+  const allEspnMatches = [...(espnFeed.matches || []), ...pastMatches];
 
   const resultMap = new Map<string, { homeGoals: number; awayGoals: number; isFinal: boolean }>();
 
-  // Ingest from ESPN live scoreboard
-  espnMatches.forEach((m) => {
+  // Ingest from ESPN live scoreboard and past matches
+  allEspnMatches.forEach((m) => {
     if (m.home_score !== undefined && m.away_score !== undefined) {
       const isFinal = m.status.toLowerCase().includes('final') || m.status.toLowerCase().includes('ft');
       const key = `${m.home_team.toLowerCase()}_vs_${m.away_team.toLowerCase()}`;

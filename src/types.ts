@@ -419,6 +419,64 @@ export interface CalendarDayPerformance {
   };
 }
 
+export interface EspnComprehensiveTeamData {
+  team_name: string;
+  team_id?: string;
+  league_name: string;
+  coach: {
+    name: string;
+    role: string;
+    nationality?: string;
+    tenure_months: number;
+    win_rate_pct: number;
+    tactical_philosophy: string;
+  };
+  key_players: string[];
+  full_roster: Array<{ name: string; position: string; jersey?: string }>;
+  dressing_room: {
+    status: 'Peace & Harmony' | 'Optimal Cohesion' | 'Tense' | 'Crisis & Turmoil';
+    morale_index: number;
+    harmony_report: string;
+  };
+  injuries_and_suspensions: Array<{
+    player_name: string;
+    position: string;
+    status: 'Out' | 'Doubtful' | 'Suspended' | 'Questionable';
+    reason: string;
+    impact_factor: number;
+  }>;
+  home_performance: {
+    matches_played: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    win_pct: number;
+    goals_scored_avg: number;
+    goals_conceded_avg: number;
+    clean_sheets_pct: number;
+  };
+  away_performance: {
+    matches_played: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    win_pct: number;
+    goals_scored_avg: number;
+    goals_conceded_avg: number;
+    clean_sheets_pct: number;
+  };
+  multi_horizon_form: {
+    last_3: { wins: number; draws: number; losses: number; goals_for: number; goals_against: number; red_cards: number };
+    last_5: { wins: number; draws: number; losses: number; goals_for: number; goals_against: number; red_cards: number };
+    last_10: { wins: number; draws: number; losses: number; goals_for: number; goals_against: number; red_cards: number };
+  };
+  discipline: {
+    total_red_cards: number;
+    total_yellow_cards: number;
+    fouls_per_match: number;
+  };
+}
+
 export interface TournamentLeaguePerformance {
   league_id: string;
   league_name: string;

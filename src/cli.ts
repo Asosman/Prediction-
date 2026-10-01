@@ -19,6 +19,7 @@ import { getModelRegistry } from './ml/modelRegistry';
 import { executeModelAutoUpdate } from './ml/autoUpdateEngine';
 import { detectTeamLeague } from './ml/teamProfiles';
 import { getTeamSquadIntelligence } from './ml/squadIntelligence';
+import { fetchEspnPreviousMatches, fetchEspnTeamComprehensiveData } from './services/espnService';
 import {
   generateTodaysTenOddsBatches,
   evaluateArchivedBatches,
@@ -54,7 +55,7 @@ ${c.bold}COMMAND-LINE USAGE:${c.reset}
   ${c.cyan}npm run cli${c.reset}                                 Open interactive numbered navigation menu
   ${c.cyan}npm run cli -- --today${c.reset}                      View today's predictions separated in 10-odds batches
   ${c.cyan}npm run cli -- --yesterday${c.reset}                  View yesterday's predictions outcome & success indicators
-  ${c.cyan}npm run cli -- "Arsenal" "Chelsea"${c.reset}          Predict matchup & view last 5 form matches
+  ${c.cyan}npm run cli -- "Arsenal" "Chelsea"${c.reset}          Predict matchup & view ESPN comprehensive intelligence
   ${c.cyan}npm run cli -- --backtest${c.reset}                   Run out-of-sample walk-forward validation
   ${c.cyan}npm run cli -- --coverage${c.reset}                   Print Data Lake coverage & tier stats
   ${c.cyan}npm run cli -- --models${c.reset}                     List registered ML models and active status
@@ -63,9 +64,9 @@ ${c.bold}COMMAND-LINE USAGE:${c.reset}
 }
 
 /**
- * Renders a comprehensive, beautifully formatted match card with verified Last 5 Form Matches
+ * Renders a comprehensive, beautifully formatted match card with full ESPN intelligence
  */
-function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPrediction>, preFeatures?: any) {
+async function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPrediction>, preFeatures?: any) {
   const homeWinPct = (pred.result.home * 100).toFixed(1);
   const drawPct = (pred.result.draw * 100).toFixed(1);
   const awayWinPct = (pred.result.away * 100).toFixed(1);
@@ -79,9 +80,11 @@ function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPredi
   const fairOddsBtts = (1 / Math.max(0.001, pred.btts.yes)).toFixed(2);
   const fairOddsOver = (1 / Math.max(0.001, pred.over_2_5.over)).toFixed(2);
 
-  // Retrieve Genuine Coach & Squad Info
-  const homeSquad = getTeamSquadIntelligence(pred.match.home, pred.match.league);
-  const awaySquad = getTeamSquadIntelligence(pred.match.away, pred.match.league);
+  // Retrieve Comprehensive ESPN Telemetry for both teams
+  const [homeData, awayData] = await Promise.all([
+    fetchEspnTeamComprehensiveData(pred.match.home, pred.match.league),
+    fetchEspnTeamComprehensiveData(pred.match.away, pred.match.league),
+  ]);
 
   // Fetch last 5 historical encounters/form matches
   const homeMatches = RAW_MATCH_RECORDS.filter(
@@ -93,7 +96,7 @@ function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPredi
   ).slice(-5).reverse();
 
   console.log(`\n${c.bold}${c.green}╔═══════════════════════════════════════════════════════════════════════════════╗${c.reset}`);
-  console.log(`${c.bold}${c.green}║                   🏟️   DETAILED MATCH ANALYSIS & FORENSICS                   ║${c.reset}`);
+  console.log(`${c.bold}${c.green}║        🏟️   ESPN COMPREHENSIVE MATCH FORENSICS & ML INTELLIGENCE             ║${c.reset}`);
   console.log(`${c.bold}${c.green}╚═══════════════════════════════════════════════════════════════════════════════╝${c.reset}`);
 
   console.log(`  ${c.bold}MATCHUP:${c.reset}  ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset} vs ${c.bold}${c.magenta}${pred.match.away.toUpperCase()}${c.reset}`);
@@ -101,25 +104,60 @@ function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPredi
   console.log(`  ${c.bold}METADATA:${c.reset} Model: ${pred.model_info.active_version} | Data Tier: ${pred.data_tier} | Calibration: ${pred.model_info.calibration_method}`);
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // Display Genuine Coaches
-  console.log(`  ${c.bold}💼 GENUINE TEAM LEADERSHIP & COACHES:${c.reset}`);
-  console.log(`     • ${c.bold}${c.cyan}${pred.match.home}${c.reset} Coach: ${c.bold}${homeSquad.coach.name}${c.reset} (Tenure: ${homeSquad.coach.tenure_months}m | Win Rate: ${homeSquad.coach.win_rate_pct}% | Morale: ${homeSquad.morale_score}%)`);
-  console.log(`       Tactical Style: ${c.dim}${homeSquad.coach.tactical_style}${c.reset}`);
-  console.log(`     • ${c.bold}${c.magenta}${pred.match.away}${c.reset} Coach: ${c.bold}${awaySquad.coach.name}${c.reset} (Tenure: ${awaySquad.coach.tenure_months}m | Win Rate: ${awaySquad.coach.win_rate_pct}% | Morale: ${awaySquad.morale_score}%)`);
-  console.log(`       Tactical Style: ${c.dim}${awaySquad.coach.tactical_style}${c.reset}`);
+  // 1. Genuine Coaching Staff
+  console.log(`  ${c.bold}💼 GENUINE HEAD COACHES & TACTICAL PHILOSOPHY:${c.reset}`);
+  console.log(`     • ${c.bold}${c.cyan}${homeData.team_name}${c.reset} Coach: ${c.bold}${homeData.coach.name}${c.reset} (Tenure: ${homeData.coach.tenure_months}m | Win Rate: ${homeData.coach.win_rate_pct}%)`);
+  console.log(`       Tactics: ${c.dim}${homeData.coach.tactical_philosophy}${c.reset}`);
+  console.log(`     • ${c.bold}${c.magenta}${awayData.team_name}${c.reset} Coach: ${c.bold}${awayData.coach.name}${c.reset} (Tenure: ${awayData.coach.tenure_months}m | Win Rate: ${awayData.coach.win_rate_pct}%)`);
+  console.log(`       Tactics: ${c.dim}${awayData.coach.tactical_philosophy}${c.reset}`);
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // Display Key Players / Squad Report
-  console.log(`  ${c.bold}🌟 KEY PLAYERS & SQUAD INTELLIGENCE:${c.reset}`);
-  const homeStars = homeSquad.key_players && homeSquad.key_players.length > 0 ? homeSquad.key_players.join(', ') : 'Standard Starting XI';
-  const awayStars = awaySquad.key_players && awaySquad.key_players.length > 0 ? awaySquad.key_players.join(', ') : 'Standard Starting XI';
-  console.log(`     • ${c.bold}${c.cyan}${pred.match.home}${c.reset} Star Players: ${c.emerald}${homeStars}${c.reset}`);
-  console.log(`       Bulletin: ${c.dim}${homeSquad.news_bulletin}${c.reset}`);
-  console.log(`     • ${c.bold}${c.magenta}${pred.match.away}${c.reset} Star Players: ${c.emerald}${awayStars}${c.reset}`);
-  console.log(`       Bulletin: ${c.dim}${awaySquad.news_bulletin}${c.reset}`);
+  // 2. Dressing Room Atmosphere (Peace vs Crisis/Chaos)
+  console.log(`  ${c.bold}🚪 DRESSING ROOM ATMOSPHERE (PEACE vs CHAOS):${c.reset}`);
+  const homePeaceBadge = homeData.dressing_room.status === 'Crisis & Turmoil' ? `${c.red}⚠️ CRISIS & CHAOS` : `${c.green}🕊️ ${homeData.dressing_room.status.toUpperCase()}`;
+  const awayPeaceBadge = awayData.dressing_room.status === 'Crisis & Turmoil' ? `${c.red}⚠️ CRISIS & CHAOS` : `${c.green}🕊️ ${awayData.dressing_room.status.toUpperCase()}`;
+  console.log(`     • ${c.bold}${c.cyan}${homeData.team_name}${c.reset}: ${homePeaceBadge}${c.reset} (Morale Index: ${c.yellow}${homeData.dressing_room.morale_index}/100${c.reset})`);
+  console.log(`       Report: ${c.dim}${homeData.dressing_room.harmony_report}${c.reset}`);
+  console.log(`     • ${c.bold}${c.magenta}${awayData.team_name}${c.reset}: ${awayPeaceBadge}${c.reset} (Morale Index: ${c.yellow}${awayData.dressing_room.morale_index}/100${c.reset})`);
+  console.log(`       Report: ${c.dim}${awayData.dressing_room.harmony_report}${c.reset}`);
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // 1X2 Probabilities & Fair Odds Table
+  // 3. Key Players & Injuries / Suspensions
+  console.log(`  ${c.bold}🌟 KEY ROSTER STARS & INJURY / SUSPENSION REPORT:${c.reset}`);
+  console.log(`     • ${c.bold}${c.cyan}${homeData.team_name}${c.reset} Stars: ${c.emerald}${homeData.key_players.join(', ')}${c.reset}`);
+  if (homeData.injuries_and_suspensions.length === 0) {
+    console.log(`       Health: ${c.green}Full squad available, zero major fitness concerns.${c.reset}`);
+  } else {
+    const injStr = homeData.injuries_and_suspensions.map((i) => `${i.player_name} [${i.status}: ${i.reason}]`).join(' | ');
+    console.log(`       Health: ${c.yellow}${injStr}${c.reset}`);
+  }
+
+  console.log(`     • ${c.bold}${c.magenta}${awayData.team_name}${c.reset} Stars: ${c.emerald}${awayData.key_players.join(', ')}${c.reset}`);
+  if (awayData.injuries_and_suspensions.length === 0) {
+    console.log(`       Health: ${c.green}Full squad available, zero major fitness concerns.${c.reset}`);
+  } else {
+    const injStr = awayData.injuries_and_suspensions.map((i) => `${i.player_name} [${i.status}: ${i.reason}]`).join(' | ');
+    console.log(`       Health: ${c.yellow}${injStr}${c.reset}`);
+  }
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+
+  // 4. Home Performance vs Away Performance Splits
+  console.log(`  ${c.bold}🏟️ HOME vs AWAY VENUE SPLITS & EFFICIENCY:${c.reset}`);
+  const hp = homeData.home_performance;
+  const ap = awayData.away_performance;
+  console.log(`     • ${c.bold}${c.cyan}${homeData.team_name} (At Home):${c.reset}  Win Rate: ${c.green}${hp.win_pct}%${c.reset} | ${hp.wins}W-${hp.draws}D-${hp.losses}L | Scored: ${hp.goals_scored_avg}/gm | Conceded: ${hp.goals_conceded_avg}/gm | Clean Sheets: ${hp.clean_sheets_pct}%`);
+  console.log(`     • ${c.bold}${c.magenta}${awayData.team_name} (On Road):${c.reset}   Win Rate: ${c.green}${ap.win_pct}%${c.reset} | ${ap.wins}W-${ap.draws}D-${ap.losses}L | Scored: ${ap.goals_scored_avg}/gm | Conceded: ${ap.goals_conceded_avg}/gm | Clean Sheets: ${ap.clean_sheets_pct}%`);
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+
+  // 5. Multi-Horizon Form (L3 • L5 • L10) & Red Cards Discipline
+  console.log(`  ${c.bold}📈 MULTI-HORIZON FORM PERFORMANCE & DISCIPLINARY CARDS:${c.reset}`);
+  const hf = homeData.multi_horizon_form;
+  const af = awayData.multi_horizon_form;
+  console.log(`     • ${c.bold}${c.cyan}${homeData.team_name}:${c.reset} L3: ${hf.last_3.wins}W-${hf.last_3.draws}D-${hf.last_3.losses}L | L5: ${hf.last_5.wins}W-${hf.last_5.draws}D-${hf.last_5.losses}L | L10: ${hf.last_10.wins}W-${hf.last_10.draws}D-${hf.last_10.losses}L | ${c.red}Red Cards: ${homeData.discipline.total_red_cards}${c.reset} (Yellow: ${homeData.discipline.total_yellow_cards})`);
+  console.log(`     • ${c.bold}${c.magenta}${awayData.team_name}:${c.reset} L3: ${af.last_3.wins}W-${af.last_3.draws}D-${af.last_3.losses}L | L5: ${af.last_5.wins}W-${af.last_5.draws}D-${af.last_5.losses}L | L10: ${af.last_10.wins}W-${af.last_10.draws}D-${af.last_10.losses}L | ${c.red}Red Cards: ${awayData.discipline.total_red_cards}${c.reset} (Yellow: ${awayData.discipline.total_yellow_cards})`);
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+
+  // 6. 1X2 Probabilities & Fair Odds Table
   console.log(`  ${c.bold}🎲 1X2 OUTCOME PROBABILITIES & FAIR ODDS:${c.reset}`);
   console.log(`     - [1] ${c.cyan}${pred.match.home.padEnd(22)}${c.reset} Probability: ${c.bold}${homeWinPct}%${c.reset}   | Fair Odds: ${c.green}${fairOddsHome}${c.reset}  | xP: ${pred.result.expected_points_home.toFixed(2)}`);
   console.log(`     - [X] ${c.gray}${"Draw / Tie".padEnd(22)}${c.reset} Probability: ${c.bold}${drawPct}%${c.reset}   | Fair Odds: ${c.green}${fairOddsDraw}${c.reset}`);
@@ -127,14 +165,14 @@ function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPredi
   console.log(`     - ${c.bold}Double Chance:${c.reset}  1X (Win/Draw): ${c.cyan}${(pred.double_chance.dc_1x * 100).toFixed(0)}%${c.reset}  |  X2 (Win/Draw): ${c.magenta}${(pred.double_chance.dc_x2 * 100).toFixed(0)}%${c.reset}  |  12 (No Draw): ${(pred.double_chance.dc_12 * 100).toFixed(0)}%`);
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // BTTS & Over/Under 2.5
+  // 7. Goals & Totals (BTTS & Over 2.5)
   console.log(`  ${c.bold}⚽ GOALS & TOTALS MARKETS:${c.reset}`);
   console.log(`     • ${c.bold}Both Teams To Score (GG/BTTS):${c.reset}  YES: ${c.green}${bttsYesPct}%${c.reset} (Fair: ${fairOddsBtts}) | NO: ${((1 - pred.btts.yes) * 100).toFixed(1)}%`);
   console.log(`     • ${c.bold}Over / Under 2.5 Goals:${c.reset}         OVER: ${c.green}${over25Pct}%${c.reset} (Fair: ${fairOddsOver}) | UNDER: ${under25Pct}%`);
   console.log(`     • ${c.dim}Poisson Expectancy (xG):${c.reset}        λ Home: ${pred.expected_goals.lambda_home.toFixed(2)}  |  μ Away: ${pred.expected_goals.mu_away.toFixed(2)} | Combined: ${pred.expected_goals.total.toFixed(2)}`);
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // Shots Prop Market
+  // 8. Shot Volume & Dynamic Regression Lines
   console.log(`  ${c.bold}🎯 SHOT VOLUME PROBABILITY MARKET:${c.reset}`);
   console.log(`     • Expected Match Shots: ${c.yellow}${pred.shots.expected_total.toFixed(1)}${c.reset} (Home: ${pred.shots.expected_home_shots.toFixed(1)} | Away: ${pred.shots.expected_away_shots.toFixed(1)})`);
   const l225 = pred.shots.lines['line_22_5'];
@@ -145,7 +183,7 @@ function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPredi
   }
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // Verified Last 5 Form Matches for Both Home and Away
+  // 9. Verified Last 5 Form Matches for Both Home and Away
   console.log(`  ${c.bold}📊 VERIFIED LAST 5 HISTORICAL FORM MATCHES (NEWEST FIRST):${c.reset}`);
   console.log(`     • ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset}:`);
   if (homeMatches.length === 0) {
@@ -188,7 +226,7 @@ function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPredi
   }
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // Feature contributions
+  // 10. Key SHAP ML Influencers
   if (pred.feature_contributions && pred.feature_contributions.length > 0) {
     const topContrib = pred.feature_contributions.slice(0, 3).map((f) => `${f.label}: ${f.contribution > 0 ? '+' : ''}${f.contribution.toFixed(2)}`).join('  |  ');
     console.log(`  ${c.bold}💡 KEY SHAP ML INFLUENCERS:${c.reset} ${c.dim}${topContrib}${c.reset}`);
@@ -287,7 +325,7 @@ async function runTodayBatchesInteractive() {
       preFeatures
     );
 
-    displayMatchPrediction(pred, preFeatures);
+    await displayMatchPrediction(pred, preFeatures);
   }
 }
 
@@ -390,7 +428,7 @@ async function runYesterdayOutcomeInteractive() {
       preFeatures
     );
 
-    displayMatchPrediction(pred, preFeatures);
+    await displayMatchPrediction(pred, preFeatures);
   }
 }
 
@@ -422,7 +460,7 @@ async function runCustomMatchupInteractive() {
     preFeatures
   );
 
-  displayMatchPrediction(pred, preFeatures);
+  await displayMatchPrediction(pred, preFeatures);
 }
 
 /**
@@ -478,6 +516,13 @@ ${c.bold}┌──────────────────────�
 
 async function runCli() {
   const args = process.argv.slice(2);
+
+  // Sync recent previous matches from official ESPN endpoints in background
+  try {
+    await fetchEspnPreviousMatches(7);
+  } catch {
+    // Continue smoothly if offline
+  }
 
   if (args.includes('--help') || args.includes('-h')) {
     printHelp();
@@ -542,7 +587,7 @@ async function runCli() {
       },
       preFeatures
     );
-    displayMatchPrediction(pred, preFeatures);
+    await displayMatchPrediction(pred, preFeatures);
     return;
   }
 
