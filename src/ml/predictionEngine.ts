@@ -124,8 +124,8 @@ export function generateMultiTargetPrediction(
   const awayDefense = awayConcededBlended * 0.35 + awayXgaBlended * 0.65;
 
   // Retrieve Squad Intelligence & Live Injury Impact
-  const homeSquad = getTeamSquadIntelligence(targetMatch.home_team);
-  const awaySquad = getTeamSquadIntelligence(targetMatch.away_team);
+  const homeSquad = getTeamSquadIntelligence(targetMatch.home_team, targetMatch.league);
+  const awaySquad = getTeamSquadIntelligence(targetMatch.away_team, targetMatch.league);
 
   // Apply tactical modifiers from injury status and squad fitness
   const homeAttackAdjusted = homeAttack * (1 + homeSquad.injury_attack_penalty);

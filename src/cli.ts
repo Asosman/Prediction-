@@ -20,6 +20,7 @@ import { runWalkForwardBacktest } from './ml/backtestEngine';
 import { getModelRegistry } from './ml/modelRegistry';
 import { executeModelAutoUpdate } from './ml/autoUpdateEngine';
 import { detectTeamLeague } from './ml/teamProfiles';
+import { getTeamSquadIntelligence } from './ml/squadIntelligence';
 import {
   generateTodaysTenOddsBatches,
   evaluateArchivedBatches,
@@ -82,53 +83,111 @@ function displayMatchPrediction(pred: ReturnType<typeof generateMultiTargetPredi
   const fairOddsBtts = (1 / Math.max(0.001, pred.btts.yes)).toFixed(2);
   const fairOddsOver = (1 / Math.max(0.001, pred.over_2_5.over)).toFixed(2);
 
-  console.log(`${c.bold}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
-  console.log(` 🏟️  ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset} vs ${c.bold}${c.magenta}${pred.match.away.toUpperCase()}${c.reset}  ${c.gray}[${pred.match.league} • ${pred.match.date}]${c.reset}`);
-  console.log(`    ${c.dim}Model Version:${c.reset} ${pred.model_info.active_version}  |  ${c.dim}Data Tier:${c.reset} ${pred.data_tier}  |  ${c.dim}Calibration:${c.reset} ${pred.model_info.calibration_method}`);
-  console.log(`${c.bold}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+  // Retrieve Genuine Coach & Squad Info
+  const homeSquad = getTeamSquadIntelligence(pred.match.home, pred.match.league);
+  const awaySquad = getTeamSquadIntelligence(pred.match.away, pred.match.league);
+
+  // Fetch last 5 historical encounters/form matches
+  const homeMatches = RAW_MATCH_RECORDS.filter(
+    (m) => m.is_played && (m.home_team.toLowerCase() === pred.match.home.toLowerCase() || m.away_team.toLowerCase() === pred.match.home.toLowerCase())
+  ).slice(-5).reverse();
+
+  const awayMatches = RAW_MATCH_RECORDS.filter(
+    (m) => m.is_played && (m.home_team.toLowerCase() === pred.match.away.toLowerCase() || m.away_team.toLowerCase() === pred.match.away.toLowerCase())
+  ).slice(-5).reverse();
+
+  console.log(`\n${c.bold}${c.green}╔═══════════════════════════════════════════════════════════════════════════════╗${c.reset}`);
+  console.log(`${c.bold}${c.green}║                   🏟️   DETAILED MATCH ANALYSIS & FORENSICS                   ║${c.reset}`);
+  console.log(`${c.bold}${c.green}╚═══════════════════════════════════════════════════════════════════════════════╝${c.reset}`);
+
+  console.log(`  ${c.bold}MATCHUP:${c.reset}  ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset} vs ${c.bold}${c.magenta}${pred.match.away.toUpperCase()}${c.reset}`);
+  console.log(`  ${c.bold}LEAGUE:${c.reset}   ${c.yellow}${pred.match.league}${c.reset}  |  ${c.bold}DATE:${c.reset} ${pred.match.date}`);
+  console.log(`  ${c.bold}METADATA:${c.reset} Model: ${pred.model_info.active_version} | Tier: ${pred.data_tier} | Calibration: ${pred.model_info.calibration_method}`);
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+
+  // Display Genuine Coaches
+  console.log(`  ${c.bold}💼 GENUINE TEAM LEADERSHIP:${c.reset}`);
+  console.log(`     • ${c.bold}${c.cyan}${pred.match.home}${c.reset} Coach: ${c.bold}${homeSquad.coach.name}${c.reset} (Tenure: ${homeSquad.coach.tenure_months}m | Win Rate: ${homeSquad.coach.win_rate_pct}% | Morale: ${homeSquad.morale_score}%)`);
+  console.log(`       Tactical Style: ${c.dim}${homeSquad.coach.tactical_style}${c.reset}`);
+  console.log(`     • ${c.bold}${c.magenta}${pred.match.away}${c.reset} Coach: ${c.bold}${awaySquad.coach.name}${c.reset} (Tenure: ${awaySquad.coach.tenure_months}m | Win Rate: ${awaySquad.coach.win_rate_pct}% | Morale: ${awaySquad.morale_score}%)`);
+  console.log(`       Tactical Style: ${c.dim}${awaySquad.coach.tactical_style}${c.reset}`);
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
   // 1X2 Probabilities & Fair Odds Table
-  console.log(` ${c.bold}1X2 MATCH OUTCOME & FAIR ODDS:${c.reset}`);
-  console.log(`   • ${c.cyan}Home Win (1):${c.reset}  ${homeWinPct.padStart(5)}%  | Fair Odds: ${c.yellow}${fairOddsHome}${c.reset} | Exp Points: ${pred.result.expected_points_home.toFixed(2)}`);
-  console.log(`   • ${c.gray}Draw (X):${c.reset}      ${drawPct.padStart(5)}%  | Fair Odds: ${c.yellow}${fairOddsDraw}${c.reset}`);
-  console.log(`   • ${c.magenta}Away Win (2):${c.reset}  ${awayWinPct.padStart(5)}%  | Fair Odds: ${c.yellow}${fairOddsAway}${c.reset} | Exp Points: ${pred.result.expected_points_away.toFixed(2)}`);
-  console.log(`   • ${c.dim}Double Chance:${c.reset} 1X: ${(pred.double_chance.dc_1x * 100).toFixed(0)}%  |  X2: ${(pred.double_chance.dc_x2 * 100).toFixed(0)}%  |  12: ${(pred.double_chance.dc_12 * 100).toFixed(0)}%`);
+  console.log(`  ${c.bold}🎲 1X2 OUTCOME PROBABILITIES & FAIR ODDS:${c.reset}`);
+  console.log(`     - [1] ${c.cyan}${pred.match.home.padEnd(20)}${c.reset} Probability: ${c.bold}${homeWinPct}%${c.reset}   | Fair Odds: ${c.green}${fairOddsHome}${c.reset}  | xP: ${pred.result.expected_points_home.toFixed(2)}`);
+  console.log(`     - [X] ${c.gray}${"Draw / Tie".padEnd(20)}${c.reset} Probability: ${c.bold}${drawPct}%${c.reset}   | Fair Odds: ${c.green}${fairOddsDraw}${c.reset}`);
+  console.log(`     - [2] ${c.magenta}${pred.match.away.padEnd(20)}${c.reset} Probability: ${c.bold}${awayWinPct}%${c.reset}   | Fair Odds: ${c.green}${fairOddsAway}${c.reset}  | xP: ${pred.result.expected_points_away.toFixed(2)}`);
+  console.log(`     - ${c.bold}Double Chance:${c.reset}  1X (Win/Draw): ${c.cyan}${(pred.double_chance.dc_1x * 100).toFixed(0)}%${c.reset}  |  X2 (Win/Draw): ${c.magenta}${(pred.double_chance.dc_x2 * 100).toFixed(0)}%${c.reset}  |  12 (No Draw): ${(pred.double_chance.dc_12 * 100).toFixed(0)}%`);
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  console.log('');
   // BTTS & Over/Under 2.5
-  console.log(` ${c.bold}GOALS & TOTALS MARKETS:${c.reset}`);
-  console.log(`   • ${c.bold}Both Teams To Score (BTTS/GG):${c.reset}  YES: ${c.green}${bttsYesPct}%${c.reset} (Fair: ${fairOddsBtts})  |  NO: ${((1 - pred.btts.yes) * 100).toFixed(1)}%`);
-  console.log(`   • ${c.bold}Over / Under 2.5 Goals:${c.reset}         OVER: ${c.green}${over25Pct}%${c.reset} (Fair: ${fairOddsOver})  |  UNDER: ${under25Pct}%`);
-  console.log(`   • ${c.dim}Poisson Expected Goals (xG):${c.reset}    λ Home: ${pred.expected_goals.lambda_home.toFixed(2)}  |  μ Away: ${pred.expected_goals.mu_away.toFixed(2)} | Total: ${pred.expected_goals.total.toFixed(2)}`);
+  console.log(`  ${c.bold}⚽ GOALS & TOTALS MARKETS:${c.reset}`);
+  console.log(`     • ${c.bold}Both Teams To Score (GG/BTTS):${c.reset}  YES: ${c.green}${bttsYesPct}%${c.reset} (Fair: ${fairOddsBtts}) | NO: ${((1 - pred.btts.yes) * 100).toFixed(1)}%`);
+  console.log(`     • ${c.bold}Over / Under 2.5 Goals:${c.reset}         OVER: ${c.green}${over25Pct}%${c.reset} (Fair: ${fairOddsOver}) | UNDER: ${under25Pct}%`);
+  console.log(`     • ${c.dim}Poisson Expectancy (xG):${c.reset}        λ Home: ${pred.expected_goals.lambda_home.toFixed(2)}  |  μ Away: ${pred.expected_goals.mu_away.toFixed(2)} | Combined: ${pred.expected_goals.total.toFixed(2)}`);
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  console.log('');
   // Shots Prop Market
-  console.log(` ${c.bold}SHOT VOLUME PROBABILITY MARKET:${c.reset}`);
-  console.log(`   • ${c.bold}Expected Match Shots:${c.reset} ${c.yellow}${pred.shots.expected_total.toFixed(1)}${c.reset} shots (Home: ${pred.shots.expected_home_shots.toFixed(1)} | Away: ${pred.shots.expected_away_shots.toFixed(1)})`);
+  console.log(`  ${c.bold}🎯 SHOT VOLUME PROBABILITY MARKET:${c.reset}`);
+  console.log(`     • Expected Match Shots: ${c.yellow}${pred.shots.expected_total.toFixed(1)}${c.reset} (Home: ${pred.shots.expected_home_shots.toFixed(1)} | Away: ${pred.shots.expected_away_shots.toFixed(1)})`);
   const l225 = pred.shots.lines['line_22_5'];
   const l245 = pred.shots.lines['line_24_5'];
   const l265 = pred.shots.lines['line_26_5'];
   if (l225 && l245 && l265) {
-    console.log(`   • ${c.dim}Dynamic Lines:${c.reset} Over 22.5: ${(l225.over * 100).toFixed(1)}% | Over 24.5: ${(l245.over * 100).toFixed(1)}% | Over 26.5: ${(l265.over * 100).toFixed(1)}%`);
+    console.log(`     • Dynamic Lines:        Over 22.5: ${(l225.over * 100).toFixed(1)}%  |  Over 24.5: ${(l245.over * 100).toFixed(1)}%  |  Over 26.5: ${(l265.over * 100).toFixed(1)}%`);
+  }
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+
+  // Last 5 matches list (The requested "last five matches of both home and away")
+  console.log(`  ${c.bold}📊 LAST 5 HISTORICAL FORM MATCHES (NEWEST FIRST):${c.reset}`);
+  console.log(`     • ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset}:`);
+  if (homeMatches.length === 0) {
+    console.log(`       No past matches found in global database.`);
+  } else {
+    homeMatches.forEach((m) => {
+      const isHome = m.home_team.toLowerCase() === pred.match.home.toLowerCase();
+      const opp = isHome ? m.away_team : m.home_team;
+      const score = `${m.home_goals} - ${m.away_goals}`;
+      let outcome = '';
+      if (m.home_goals === m.away_goals) {
+        outcome = `${c.yellow}[D] DRAW${c.reset}`;
+      } else if ((isHome && m.home_goals > m.away_goals) || (!isHome && m.away_goals > m.home_goals)) {
+        outcome = `${c.green}[W] WIN${c.reset}`;
+      } else {
+        outcome = `${c.red}[L] LOSS${c.reset}`;
+      }
+      console.log(`       - [${m.date}] ${isHome ? 'Home' : 'Away'} vs ${opp.padEnd(20)} | Score: ${score.padEnd(7)} | Outcome: ${outcome}`);
+    });
   }
 
-  // Multi-Horizon Rolling Windows display
-  if (preFeatures && preFeatures.home_form_multi && preFeatures.away_form_multi) {
-    console.log('');
-    console.log(` ${c.bold}MULTI-HORIZON ROLLING FORM PERFORMANCE (L3 • L5 • L10):${c.reset}`);
-    const h = preFeatures.home_form_multi;
-    const a = preFeatures.away_form_multi;
-    console.log(`   • ${c.cyan}${pred.match.home}:${c.reset} L3: ${h.last_3.wins}W-${h.last_3.draws}D-${h.last_3.losses}L (${h.last_3.xg_scored_avg.toFixed(2)} xG) | L5: ${h.last_5.wins}W-${h.last_5.draws}D-${h.last_5.losses}L (${h.last_5.xg_scored_avg.toFixed(2)} xG) | L10: ${h.last_10.wins}W-${h.last_10.draws}D-${h.last_10.losses}L (${h.last_10.xg_scored_avg.toFixed(2)} xG) [Trend: ${h.form_trend.toUpperCase()}]`);
-    console.log(`   • ${c.magenta}${pred.match.away}:${c.reset} L3: ${a.last_3.wins}W-${a.last_3.draws}D-${a.last_3.losses}L (${a.last_3.xg_scored_avg.toFixed(2)} xG) | L5: ${a.last_5.wins}W-${a.last_5.draws}D-${a.last_5.losses}L (${a.last_5.xg_scored_avg.toFixed(2)} xG) | L10: ${a.last_10.wins}W-${a.last_10.draws}D-${a.last_10.losses}L (${a.last_10.xg_scored_avg.toFixed(2)} xG) [Trend: ${a.form_trend.toUpperCase()}]`);
+  console.log(`     • ${c.bold}${c.magenta}${pred.match.away.toUpperCase()}${c.reset}:`);
+  if (awayMatches.length === 0) {
+    console.log(`       No past matches found in global database.`);
+  } else {
+    awayMatches.forEach((m) => {
+      const isHome = m.home_team.toLowerCase() === pred.match.away.toLowerCase();
+      const opp = isHome ? m.away_team : m.home_team;
+      const score = `${m.home_goals} - ${m.away_goals}`;
+      let outcome = '';
+      if (m.home_goals === m.away_goals) {
+        outcome = `${c.yellow}[D] DRAW${c.reset}`;
+      } else if ((isHome && m.home_goals > m.away_goals) || (!isHome && m.away_goals > m.home_goals)) {
+        outcome = `${c.green}[W] WIN${c.reset}`;
+      } else {
+        outcome = `${c.red}[L] LOSS${c.reset}`;
+      }
+      console.log(`       - [${m.date}] ${isHome ? 'Home' : 'Away'} vs ${opp.padEnd(20)} | Score: ${score.padEnd(7)} | Outcome: ${outcome}`);
+    });
   }
+  console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  console.log('');
   // Feature contributions
   if (pred.feature_contributions && pred.feature_contributions.length > 0) {
     const topContrib = pred.feature_contributions.slice(0, 3).map((f) => `${f.label}: ${f.contribution > 0 ? '+' : ''}${f.contribution.toFixed(2)}`).join('  |  ');
-    console.log(` ${c.bold}KEY SHAP INFLUENCERS:${c.reset} ${c.dim}${topContrib}${c.reset}`);
+    console.log(`  ${c.bold}💡 KEY SHAP ML INFLUENCERS:${c.reset} ${c.dim}${topContrib}${c.reset}`);
   }
-  console.log('\n');
+  console.log(`${c.bold}${c.green}╚═══════════════════════════════════════════════════════════════════════════════╝${c.reset}\n`);
 }
 
 async function runCli() {

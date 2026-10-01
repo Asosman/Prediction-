@@ -134,8 +134,8 @@ interface CandidateSelection {
 
 function extractCandidateSelections(pred: MultiTargetPrediction, kickoffWat?: string): CandidateSelection[] {
   const candidates: CandidateSelection[] = [];
-  const homeSquad = getTeamSquadIntelligence(pred.match.home);
-  const awaySquad = getTeamSquadIntelligence(pred.match.away);
+  const homeSquad = getTeamSquadIntelligence(pred.match.home, pred.match.league);
+  const awaySquad = getTeamSquadIntelligence(pred.match.away, pred.match.league);
 
   const matchInfo = {
     id: `${pred.match.home.toLowerCase().replace(/[^a-z0-9]/g, '_')}_vs_${pred.match.away.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${pred.match.date}`,

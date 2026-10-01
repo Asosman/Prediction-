@@ -272,11 +272,22 @@ export const SQUAD_INTELLIGENCE_REGISTRY: Record<string, Partial<SquadIntelligen
  * Deterministically generates a squad intelligence profile for any club worldwide.
  * Guarantees zero unhandled teams while reflecting their real identity.
  */
-export function getTeamSquadIntelligence(teamName: string): SquadIntelligenceProfile {
+export function getTeamSquadIntelligence(teamName: string, leagueName?: string): SquadIntelligenceProfile {
   const teamKey = normalizeTeamName(teamName);
+  const isWomen = leagueName && (
+    leagueName.toLowerCase().includes('women') || 
+    leagueName.toLowerCase().includes('womens') || 
+    leagueName.toLowerCase().includes('female') || 
+    leagueName.toLowerCase().includes('uwcl') || 
+    leagueName.toLowerCase().includes('wnl')
+  );
+  
+  // For women's teams, if we have a genuine women's coach, bypass the standard men's SQUAD_INTELLIGENCE_REGISTRY
+  const genuineCoach = lookupGenuineCoach(teamName, leagueName);
+
   const known = SQUAD_INTELLIGENCE_REGISTRY[teamKey];
 
-  if (known && known.coach && known.injuries) {
+  if (known && known.coach && known.injuries && !isWomen) {
     const attackPenalty = known.injuries
       .filter((i) => i.position === 'FWD' || i.position === 'MID')
       .reduce((sum, i) => sum + i.impact_score, 0);
@@ -296,9 +307,6 @@ export function getTeamSquadIntelligence(teamName: string): SquadIntelligencePro
       injury_defense_penalty: Number(defensePenalty.toFixed(2)),
     };
   }
-
-  // Look up genuine verified coach from database
-  const genuineCoach = lookupGenuineCoach(teamName);
 
   let hash = 0;
   for (let i = 0; i < teamName.length; i++) {
