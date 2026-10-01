@@ -805,12 +805,14 @@ export async function fetchEspnTeamPastMatches(
       if (res.ok) {
         const data = await res.json();
         const events = data.events || [];
-        const completedEvents = events.filter((e: any) => e.competitions?.[0]?.status?.type?.completed);
+        const completedEvents = events
+          .filter((e: any) => e.competitions?.[0]?.status?.type?.completed)
+          .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         if (completedEvents.length > 0) {
           const results: EspnHistoricalMatch[] = [];
 
-          for (const ev of completedEvents.slice(-count).reverse()) {
+          for (const ev of completedEvents.slice(0, count)) {
             const comp = ev.competitions?.[0];
             if (!comp) continue;
             const competitors = comp.competitors || [];
@@ -869,14 +871,14 @@ export async function fetchEspnTeamPastMatches(
     // Fallback gracefully
   }
 
-  // Graceful fallback from Master Dataset
+  // Graceful fallback from Master Dataset strictly sorted by date descending (newest 2026 matches first)
   const fallbackMatches = RAW_MATCH_RECORDS.filter(
     (m) =>
       m.is_played &&
       (m.home_team.toLowerCase().includes(teamName.toLowerCase()) || m.away_team.toLowerCase().includes(teamName.toLowerCase()))
   )
-    .slice(-count)
-    .reverse();
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, count);
 
   return fallbackMatches.map((m) => {
     const isHome = m.home_team.toLowerCase().includes(teamName.toLowerCase());

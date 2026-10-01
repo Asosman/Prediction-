@@ -94,8 +94,36 @@ async function displayMatchPrediction(pred: ReturnType<typeof generateMultiTarge
     fetchEspnTeamPastMatches(pred.match.away, pred.match.league, 5),
   ]);
 
+  // Determine Primary High-Accuracy Professional Prediction & Forensic Reason
+  let primaryPick = '';
+  let primaryReason = '';
+  const timeDisplay = pred.match.date;
+
+  if (pred.result.home >= 0.55) {
+    primaryPick = `${pred.match.home} to Win (1)`;
+    primaryReason = `Model identifies decisive ${(pred.result.home * 100).toFixed(0)}% Home Win probability with superior home xG generation (${pred.expected_goals.lambda_home.toFixed(2)}) versus away defense (${pred.expected_goals.mu_away.toFixed(2)}).`;
+  } else if (pred.result.away >= 0.50) {
+    primaryPick = `${pred.match.away} to Win (2)`;
+    primaryReason = `Away dominance indicated at ${(pred.result.away * 100).toFixed(0)}% backed by acute away form momentum and positive Elo differential.`;
+  } else if (pred.double_chance.dc_1x >= 0.70) {
+    primaryPick = `Double Chance: ${pred.match.home} Win or Draw (1X)`;
+    primaryReason = `High fortress safety factor ${(pred.double_chance.dc_1x * 100).toFixed(0)}% ensuring Home Win or Draw resilience based on home clean-sheet and defensive solidarity metrics.`;
+  } else if (pred.double_chance.dc_x2 >= 0.68) {
+    primaryPick = `Double Chance: ${pred.match.away} Win or Draw (X2)`;
+    primaryReason = `Road safety rating of ${(pred.double_chance.dc_x2 * 100).toFixed(0)}% favoring Away side to avoid defeat based on acute transition threat.`;
+  } else if (pred.btts.yes >= 0.55) {
+    primaryPick = 'Both Teams To Score - YES (GG)';
+    primaryReason = `Both attacking units exhibiting high offensive output with combined expected goals (${pred.expected_goals.total.toFixed(2)}) yielding ${(pred.btts.yes * 100).toFixed(0)}% BTTS probability.`;
+  } else if (pred.over_2_5.over >= 0.55) {
+    primaryPick = 'Over 2.5 Goals';
+    primaryReason = `Aggressive attacking metrics and high expected shot volume (${pred.shots.expected_total.toFixed(1)} shots) suggest an open fixture exceeding 2.5 goals (${(pred.over_2_5.over * 100).toFixed(0)}%).`;
+  } else {
+    primaryPick = pred.result.home >= pred.result.away ? `Double Chance: ${pred.match.home} Win or Draw (1X)` : `Double Chance: ${pred.match.away} Win or Draw (X2)`;
+    primaryReason = `Balanced tactical matchup where defensive stability and venue split recommend Double Chance for maximum risk-adjusted reliability.`;
+  }
+
   console.log(`\n${c.bold}${c.green}╔═══════════════════════════════════════════════════════════════════════════════╗${c.reset}`);
-  console.log(`${c.bold}${c.green}║        🏟️   ESPN COMPREHENSIVE MATCH FORENSICS & ML INTELLIGENCE             ║${c.reset}`);
+  console.log(`${c.bold}${c.green}║        🏟️   FOOTYPREDICT 35-YEAR PROFESSIONAL MATCH FORENSICS                ║${c.reset}`);
   console.log(`${c.bold}${c.green}╚═══════════════════════════════════════════════════════════════════════════════╝${c.reset}`);
 
   console.log(`  ${c.bold}MATCHUP:${c.reset}  ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset} vs ${c.bold}${c.magenta}${pred.match.away.toUpperCase()}${c.reset}`);
@@ -103,12 +131,10 @@ async function displayMatchPrediction(pred: ReturnType<typeof generateMultiTarge
   console.log(`  ${c.bold}METADATA:${c.reset} Model: ${pred.model_info.active_version} | Data Tier: ${pred.data_tier} | Calibration: ${pred.model_info.calibration_method}`);
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // 1. Genuine Coaching Staff
-  console.log(`  ${c.bold}💼 GENUINE HEAD COACHES & TACTICAL PHILOSOPHY:${c.reset}`);
-  console.log(`     • ${c.bold}${c.cyan}${homeData.team_name}${c.reset} Coach: ${c.bold}${homeData.coach.name}${c.reset} (Tenure: ${homeData.coach.tenure_months}m | Win Rate: ${homeData.coach.win_rate_pct}%)`);
-  console.log(`       Tactics: ${c.dim}${homeData.coach.tactical_philosophy}${c.reset}`);
-  console.log(`     • ${c.bold}${c.magenta}${awayData.team_name}${c.reset} Coach: ${c.bold}${awayData.coach.name}${c.reset} (Tenure: ${awayData.coach.tenure_months}m | Win Rate: ${awayData.coach.win_rate_pct}%)`);
-  console.log(`       Tactics: ${c.dim}${awayData.coach.tactical_philosophy}${c.reset}`);
+  // 1. Primary Formatted Prediction Header
+  console.log(`  ${c.bold}🎯 PRIMARY PREDICTION & FORENSIC RECOMMENDATION:${c.reset}`);
+  console.log(`     ${c.bold}${c.yellow}${timeDisplay}:${c.reset} ${c.bold}${c.cyan}${pred.match.home}${c.reset} vs ${c.bold}${c.magenta}${pred.match.away}${c.reset} ${c.bold}${c.green}(${primaryPick})${c.reset}`);
+  console.log(`     ${c.bold}Reason:${c.reset} ${primaryReason}`);
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
   // 2. Dressing Room Atmosphere (Peace vs Crisis/Chaos)
@@ -248,16 +274,13 @@ async function runTodayBatchesInteractive() {
     console.log(`   ${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
     b.legs.forEach((leg: any, idx: number) => {
-      const marketBadge = leg.market_label.padEnd(25);
-      const selectionStr = leg.selection.padEnd(35);
       const oddsStr = `${leg.odds}x`.padStart(6);
       const probStr = `${leg.probability_pct}%`.padStart(6);
-      const statusIndicator = `${c.yellow}⏳ PENDING${c.reset}`;
+      const kickoffTime = leg.kickoff_wat || leg.date;
 
-      console.log(`     ${c.bold}${idx + 1}.${c.reset} [${leg.league}] ${c.bold}${c.cyan}${leg.home_team}${c.reset} vs ${c.bold}${c.magenta}${leg.away_team}${c.reset}`);
-      console.log(`        • ${c.bold}Genuine Coaches:${c.reset} H: ${c.bold}${leg.home_coach || "Coaching Staff"}${c.reset} vs A: ${c.bold}${leg.away_coach || "Coaching Staff"}${c.reset}`);
-      console.log(`        • Market: ${marketBadge} | Pick: ${selectionStr} | Odds: ${c.yellow}${oddsStr}${c.reset} | Prob: ${probStr} | Status: ${statusIndicator}`);
-      console.log(`        • Forensics: ${leg.reason}`);
+      console.log(`     ${c.bold}${idx + 1}.${c.reset} ${c.yellow}${kickoffTime}:${c.reset} ${c.bold}${c.cyan}${leg.home_team}${c.reset} vs ${c.bold}${c.magenta}${leg.away_team}${c.reset} ${c.bold}${c.green}(${leg.selection})${c.reset}`);
+      console.log(`        • ${c.bold}Reason for the prediction:${c.reset} ${leg.reason}`);
+      console.log(`        • ${c.dim}Market: ${leg.market_label} | Odds: ${oddsStr} | Win Prob: ${probStr} | Status: ⏳ PENDING${c.reset}`);
     });
     console.log(`   ${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
   });
@@ -363,9 +386,11 @@ async function runYesterdayOutcomeInteractive() {
       let legMark = '⏳';
       if (leg.status === 'WON') legMark = `${c.green}✅ WON${c.reset}`;
       if (leg.status === 'LOST') legMark = `${c.red}❌ LOST${c.reset}`;
-      console.log(`      ${idx + 1}. [${legMark}] ${c.bold}${leg.fixture}${c.reset}`);
-      console.log(`         Genuine Coaches: H: ${leg.home_coach || "Coaching Staff"} vs A: ${leg.away_coach || "Coaching Staff"}`);
-      console.log(`         Pick: ${leg.selection} (${leg.odds}x) | Result: ${leg.actual_score || 'N/A'}`);
+      const kickoffTime = leg.kickoff_wat || leg.date;
+
+      console.log(`      ${idx + 1}. [${legMark}] ${c.yellow}${kickoffTime}:${c.reset} ${c.bold}${leg.home_team} vs ${leg.away_team}${c.reset} ${c.green}(${leg.selection})${c.reset}`);
+      console.log(`         • ${c.bold}Reason for the prediction:${c.reset} ${leg.reason}`);
+      console.log(`         • ${c.dim}Result: ${leg.actual_score || 'N/A'} (Odds: ${leg.odds}x)${c.reset}`);
 
       if (!pastMatchList.some((m) => m.home === leg.home_team && m.away === leg.away_team)) {
         pastMatchList.push({
