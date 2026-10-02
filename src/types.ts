@@ -725,3 +725,73 @@ export interface EspnNewsArticle {
   related_teams?: string[];
 }
 
+export type PredictionStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
+
+export interface PersistentPredictionRecord {
+  prediction_id: string;
+  match_id: string; // Unique API event ID
+  date_generated: string;
+  match_date: string; // YYYY-MM-DD
+  kickoff_wat: string;
+  competition: string;
+  home_team: string;
+  away_team: string;
+
+  // Pre-match prediction fields (never altered when evaluated)
+  predicted_score: string; // e.g. "2 - 1"
+  predicted_outcome: string; // e.g. "HOME_WIN", "DRAW", "AWAY_WIN"
+  market_type: '1X2' | 'DC' | 'GG' | 'OVER_2_5' | 'UNDER_2_5' | 'EXACT_SCORE';
+  selection: string; // e.g. "Arsenal to Win (1)", "Over 2.5 Goals", "Both Teams To Score (YES)"
+  odds: number;
+  reason: string;
+  probabilities: {
+    home_win_pct: number;
+    draw_pct: number;
+    away_win_pct: number;
+    btts_yes_pct: number;
+    over_2_5_pct: number;
+    under_2_5_pct: number;
+    double_chance_1x_pct: number;
+    double_chance_x2_pct: number;
+  };
+
+  // Post-match evaluation fields
+  actual_final_score?: string; // e.g. "2 - 1"
+  actual_home_goals?: number;
+  actual_away_goals?: number;
+  actual_match_result?: 'HOME_WIN' | 'DRAW' | 'AWAY_WIN';
+  status: PredictionStatus;
+  evaluated_at?: string;
+
+  // Batch association
+  batch_id: string;
+  batch_title?: string;
+}
+
+export interface PredictionBatchRecord {
+  batch_id: string;
+  batch_title: string;
+  created_at: string;
+  date: string; // YYYY-MM-DD
+  total_predictions: number;
+  successful_predictions: number;
+  failed_predictions: number;
+  pending_predictions: number;
+  accuracy_pct: number; // successful / (successful + failed) * 100
+  total_odds: number;
+  predictions: PersistentPredictionRecord[];
+  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+}
+
+export interface DailyPredictionPerformance {
+  date: string; // YYYY-MM-DD
+  total_predictions: number;
+  successful_predictions: number;
+  failed_predictions: number;
+  pending_predictions: number;
+  accuracy_pct: number;
+  batches: PredictionBatchRecord[];
+  predictions: PersistentPredictionRecord[];
+}
+
+

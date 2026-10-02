@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
+  History,
+  CalendarCheck,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -35,9 +37,10 @@ export const Header: React.FC<HeaderProps> = ({
     triggerManualSync,
   } = useOnlineModelSync();
   const navTabs = [
-    { id: 'predictions', label: 'Single Match', icon: Activity },
-    { id: 'batch', label: 'Batch Matches (Insert & Rank)', icon: Layers, isNew: true },
-    { id: 'form_tracker', label: 'Form Tracker & Ingest', icon: Flame },
+    { id: 'predictions', label: 'Match Dashboard', icon: Activity },
+    { id: 'history', label: 'Prediction History & Yesterday', icon: CalendarCheck, isNew: true },
+    { id: 'batch', label: '10-Odds Batches & Accumulators', icon: Layers },
+    { id: 'form_tracker', label: 'Form Tracker & Forensics', icon: Flame },
     { id: 'data_lake', label: 'Data Lake & Coverage', icon: Database },
     { id: 'training', label: 'Training & Registry', icon: Cpu },
     { id: 'backtesting', label: 'Walk-Forward Backtest', icon: BarChart3 },

@@ -9,12 +9,13 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { MultiTargetPrediction, EspnMatchOfTheDay } from '../types';
+import { MultiTargetPrediction, EspnMatchOfTheDay, PersistentPredictionRecord } from '../types';
 import { extractPreMatchFeatures } from './featureEngineering';
 import { generateMultiTargetPrediction } from './predictionEngine';
 import { fetchEspnMatchesOfTheDay, fetchEspnPreviousMatches, getCurrentDateInWAT } from '../services/espnService';
 import { RAW_MATCH_RECORDS } from '../data/masterMatchDataset';
 import { getTeamSquadIntelligence } from './squadIntelligence';
+import { recordNewPredictions } from './predictionHistoryEngine';
 
 export type MarketCategory = '1X2' | 'DC' | 'GG' | 'OVER_2_5';
 
@@ -384,9 +385,64 @@ export async function generateTodaysTenOddsBatches(): Promise<{
 
   const batches = buildTenOddsBatches(matchesWithPredictions, currentWat.formatted);
 
-  // Save generated batches into archive
+  // Save generated batches into archive & persistent prediction history
   if (batches.length > 0) {
     saveBatchesToArchive(batches);
+
+    const historyRecords: PersistentPredictionRecord[] = [];
+    batches.forEach((b) => {
+      b.legs.forEach((leg, idx) => {
+        const matchingPred = matchesWithPredictions.find(
+          (m) => m.match.home_team === leg.home_team && m.match.away_team === leg.away_team
+        )?.pred;
+
+        const predScore = matchingPred
+          ? `${Math.round(matchingPred.expected_goals.lambda_home)} - ${Math.round(matchingPred.expected_goals.mu_away)}`
+          : '2 - 1';
+
+        const predOutcome = matchingPred
+          ? matchingPred.result.home > matchingPred.result.away
+            ? 'HOME_WIN'
+            : matchingPred.result.away > matchingPred.result.home
+            ? 'AWAY_WIN'
+            : 'DRAW'
+          : 'HOME_WIN';
+
+        historyRecords.push({
+          prediction_id: `PRED-${leg.date.replace(/[^0-9]/g, '')}-${leg.match_id}-${idx + 1}`,
+          match_id: leg.match_id,
+          date_generated: b.created_at,
+          match_date: leg.date,
+          kickoff_wat: leg.kickoff_wat,
+          competition: leg.league,
+          home_team: leg.home_team,
+          away_team: leg.away_team,
+          predicted_score: predScore,
+          predicted_outcome: predOutcome,
+          market_type: leg.market_type,
+          selection: leg.selection,
+          odds: leg.odds,
+          reason: leg.reason,
+          probabilities: {
+            home_win_pct: matchingPred ? Number((matchingPred.result.home * 100).toFixed(1)) : leg.probability_pct,
+            draw_pct: matchingPred ? Number((matchingPred.result.draw * 100).toFixed(1)) : 25.0,
+            away_win_pct: matchingPred ? Number((matchingPred.result.away * 100).toFixed(1)) : 20.0,
+            btts_yes_pct: matchingPred ? Number((matchingPred.btts.yes * 100).toFixed(1)) : 52.0,
+            over_2_5_pct: matchingPred ? Number((matchingPred.over_2_5.over * 100).toFixed(1)) : 50.0,
+            under_2_5_pct: matchingPred ? Number((matchingPred.over_2_5.under * 100).toFixed(1)) : 50.0,
+            double_chance_1x_pct: matchingPred ? Number((matchingPred.double_chance.dc_1x * 100).toFixed(1)) : 75.0,
+            double_chance_x2_pct: matchingPred ? Number((matchingPred.double_chance.dc_x2 * 100).toFixed(1)) : 45.0,
+          },
+          status: 'PENDING',
+          batch_id: b.batch_id,
+          batch_title: b.batch_title,
+        });
+      });
+    });
+
+    if (historyRecords.length > 0) {
+      recordNewPredictions(historyRecords);
+    }
   }
 
   return {

@@ -32,6 +32,12 @@ import {
   loadArchivedBatches,
   OddsBatch,
 } from './ml/batchOddsEngine';
+import {
+  evaluatePredictionsForDate,
+  getYesterdaysPredictionReport,
+  getHistoricalPerformanceByDate,
+  loadPredictionsHistory,
+} from './ml/predictionHistoryEngine';
 
 // ANSI terminal color helpers
 const c = {
@@ -61,6 +67,8 @@ ${c.bold}COMMAND-LINE USAGE:${c.reset}
   ${c.cyan}npm run cli${c.reset}                                 Open interactive numbered navigation menu
   ${c.cyan}npm run cli -- --today${c.reset}                      View today's predictions separated in 10-odds batches
   ${c.cyan}npm run cli -- --yesterday${c.reset}                  View yesterday's predictions outcome & success indicators
+  ${c.cyan}npm run cli -- --history${c.reset}                    Audit historical prediction accuracy by date
+  ${c.cyan}npm run cli -- --news${c.reset}                       View latest ESPN breaking football happenings
   ${c.cyan}npm run cli -- "Arsenal" "Chelsea"${c.reset}          Predict matchup & view ESPN comprehensive intelligence
   ${c.cyan}npm run cli -- --backtest${c.reset}                   Run out-of-sample walk-forward validation
   ${c.cyan}npm run cli -- --coverage${c.reset}                   Print Data Lake coverage & tier stats
@@ -349,108 +357,134 @@ async function runTodayBatchesInteractive() {
 }
 
 /**
- * Loads and displays Yesterday's predictions outcome with success indicators, and allows drilldown
+ * Loads and displays Yesterday's predictions outcome with separate Successful and Failed sections
  */
 async function runYesterdayOutcomeInteractive() {
-  console.log(`\n${c.bold}${c.green}📊 LOADING YESTERDAY'S PREDICTIONS & EVALUATING OUTCOME INDICATORS...${c.reset}`);
-  const evalRes = await evaluateArchivedBatches();
-  const batchesToDisplay = evalRes.allBatches;
+  console.log(`\n${c.bold}${c.green}📊 LOADING YESTERDAY'S PREDICTIONS & EVALUATING OFFICIAL FINAL SCORES FROM ESPN...${c.reset}`);
+  const report = await getYesterdaysPredictionReport();
 
-  console.log(`${c.bold}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
-  console.log(` 🏆  ${c.bold}${c.emerald}FOOTYPREDICT 10-ODDS BATCHES RECORD & WIN/LOSS INDICATORS${c.reset}`);
-  console.log(`${c.bold}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+  console.log(`
+${c.bold}═══════════════════════════════════════════════════════════════════════════════
+  YESTERDAY'S PREDICTIONS PERFORMANCE AUDIT (${report.date})
+═══════════════════════════════════════════════════════════════════════════════${c.reset}
+  • ${c.bold}Total Predictions:${c.reset}      ${c.cyan}${report.total}${c.reset}
+  • ${c.bold}Successful [WON]:${c.reset}       ${c.green}${report.successful}${c.reset}
+  • ${c.bold}Failed [LOST]:${c.reset}          ${c.red}${report.failed}${c.reset}
+  • ${c.bold}Pending Matches:${c.reset}        ${c.yellow}${report.pending}${c.reset}
+  • ${c.bold}Verified Accuracy Rate:${c.reset} ${c.emerald}${c.bold}${report.accuracy_pct.toFixed(2)}%${c.reset} (Excl. pending fixtures)
+${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}
+`);
 
-  let totalWon = 0;
-  let totalLost = 0;
-  let totalPending = 0;
-
-  const pastMatchList: Array<{ home: string; away: string; league: string; date: string }> = [];
-
-  batchesToDisplay.forEach((b) => {
-    let indicator = `${c.yellow}⏳ PENDING${c.reset}`;
-    if (b.status === 'WON') {
-      indicator = `${c.bold}${c.green}🏆 SUCCESSFUL BATCH [WON]${c.reset}`;
-      totalWon++;
-    } else if (b.status === 'LOST') {
-      indicator = `${c.bold}${c.red}❌ FAILED BATCH [LOST]${c.reset}`;
-      totalLost++;
-    } else {
-      totalPending++;
-    }
-
-    console.log(`\n  • [${b.date}] ${c.bold}${c.cyan}${b.batch_id}${c.reset} — ${c.bold}${b.batch_title}${c.reset}`);
-    console.log(`    Status Indicator: ${indicator}`);
-    console.log(`    Multiplier Return: ${c.emerald}${b.total_odds}x${c.reset}  |  Legs Hits: ${b.legs_won}/${b.legs.length} Won  |  Created: ${b.created_at}`);
-
-    b.legs.forEach((leg: any, idx: number) => {
-      let legMark = '⏳';
-      if (leg.status === 'WON') legMark = `${c.green}✅ WON${c.reset}`;
-      if (leg.status === 'LOST') legMark = `${c.red}❌ LOST${c.reset}`;
-      const kickoffTime = leg.kickoff_wat || leg.date;
-
-      console.log(`      ${idx + 1}. [${legMark}] ${c.yellow}${kickoffTime}:${c.reset} ${c.bold}${leg.home_team} vs ${leg.away_team}${c.reset} ${c.green}(${leg.selection})${c.reset}`);
-      console.log(`         • ${c.bold}Reason for the prediction:${c.reset} ${leg.reason}`);
-      console.log(`         • ${c.dim}Result: ${leg.actual_score || 'N/A'} (Odds: ${leg.odds}x)${c.reset}`);
-
-      if (!pastMatchList.some((m) => m.home === leg.home_team && m.away === leg.away_team)) {
-        pastMatchList.push({
-          home: leg.home_team,
-          away: leg.away_team,
-          league: leg.league,
-          date: leg.date,
-        });
-      }
+  // 1. Successful Predictions Section
+  console.log(`\n${c.bold}${c.green}✅ SUCCESSFUL PREDICTIONS (${report.successful_predictions.length})${c.reset}`);
+  console.log(`${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+  if (report.successful_predictions.length === 0) {
+    console.log(`  ${c.dim}No successful predictions recorded for yesterday.${c.reset}`);
+  } else {
+    report.successful_predictions.forEach((p, idx) => {
+      console.log(`  ${c.bold}${idx + 1}.${c.reset} ${c.yellow}${p.kickoff_wat}:${c.reset} ${c.bold}${c.cyan}${p.home_team}${c.reset} vs ${c.bold}${c.magenta}${p.away_team}${c.reset} ${c.bold}${c.green}(${p.selection})${c.reset}`);
+      console.log(`     • ${c.bold}Reason for the prediction:${c.reset} ${p.reason}`);
+      console.log(`     • ${c.bold}Predicted Score:${c.reset} ${p.predicted_score} | ${c.bold}Actual Result:${c.reset} ${c.green}${p.actual_final_score || 'N/A'}${c.reset} | ${c.bold}Odds:${c.reset} ${p.odds}x | ${c.bold}Status:${c.reset} ${c.green}✅ SUCCESS${c.reset}`);
+      console.log('');
     });
-  });
-
-  const totalEvaluated = totalWon + totalLost;
-  const successRate = totalEvaluated > 0 ? (totalWon / totalEvaluated) * 100 : 0;
-  console.log(`\n${c.bold}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
-  console.log(` ${c.bold}SUMMARY SCORECARD:${c.reset}`);
-  console.log(`   • ${c.bold}Total Batches Evaluated:${c.reset} ${batchesToDisplay.length}`);
-  console.log(`   • ${c.bold}Successful Won Batches:${c.reset}  ${c.green}${totalWon}${c.reset}`);
-  console.log(`   • ${c.bold}Failed Lost Batches:${c.reset}     ${c.red}${totalLost}${c.reset}`);
-  console.log(`   • ${c.bold}Pending Active Batches:${c.reset}  ${c.yellow}${totalPending}${c.reset}`);
-  console.log(`   • ${c.bold}Batch Success Rate:${c.reset}      ${c.green}${successRate.toFixed(1)}%${c.reset}`);
-  console.log(`${c.bold}─────────────────────────────────────────────────────────────────────────────${c.reset}\n`);
-
-  console.log(`\n${c.bold}📋 PAST MATCHES AVAILABLE FOR HISTORICAL DRILLDOWN & VERIFICATION:${c.reset}`);
-  pastMatchList.forEach((m, idx) => {
-    console.log(`  [${c.cyan}${idx + 1}${c.reset}] ${m.home} vs ${m.away} ${c.dim}(${m.league})${c.reset}`);
-  });
-
-  // Interactive match inspection loop
-  while (true) {
-    console.log('');
-    const input = await promptUser(`👉 Enter Match Number (1-${pastMatchList.length}) to see full squad & Last 5 Matches, or 'b' for Back: `);
-    if (input.toLowerCase() === 'b' || input === '0' || input === '') {
-      break;
-    }
-    const matchIdx = parseInt(input, 10) - 1;
-    if (isNaN(matchIdx) || matchIdx < 0 || matchIdx >= pastMatchList.length) {
-      console.log(`${c.red}Invalid selection. Please choose a number between 1 and ${pastMatchList.length}.${c.reset}`);
-      continue;
-    }
-
-    const selected = pastMatchList[matchIdx];
-    const preFeatures = extractPreMatchFeatures({
-      home_team: selected.home,
-      away_team: selected.away,
-      date: selected.date,
-      league_id: selected.league.toLowerCase().replace(/[^a-z0-9]/g, '_'),
-    });
-    const pred = generateMultiTargetPrediction(
-      {
-        home_team: selected.home,
-        away_team: selected.away,
-        league: selected.league,
-        date: selected.date,
-      },
-      preFeatures
-    );
-
-    await displayMatchPrediction(pred, preFeatures);
   }
+
+  // 2. Failed Predictions Section
+  console.log(`\n${c.bold}${c.red}❌ FAILED PREDICTIONS (${report.failed_predictions.length})${c.reset}`);
+  console.log(`${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+  if (report.failed_predictions.length === 0) {
+    console.log(`  ${c.dim}Zero failed predictions recorded for yesterday.${c.reset}`);
+  } else {
+    report.failed_predictions.forEach((p, idx) => {
+      console.log(`  ${c.bold}${idx + 1}.${c.reset} ${c.yellow}${p.kickoff_wat}:${c.reset} ${c.bold}${c.cyan}${p.home_team}${c.reset} vs ${c.bold}${c.magenta}${p.away_team}${c.reset} ${c.bold}${c.red}(${p.selection})${c.reset}`);
+      console.log(`     • ${c.bold}Reason for the prediction:${c.reset} ${p.reason}`);
+      console.log(`     • ${c.bold}Predicted Score:${c.reset} ${p.predicted_score} | ${c.bold}Actual Result:${c.reset} ${c.red}${p.actual_final_score || 'N/A'}${c.reset} | ${c.bold}Odds:${c.reset} ${p.odds}x | ${c.bold}Status:${c.reset} ${c.red}❌ FAILED${c.reset}`);
+      console.log('');
+    });
+  }
+
+  // 3. Pending Predictions Section
+  if (report.pending_predictions.length > 0) {
+    console.log(`\n${c.bold}${c.yellow}⏳ PENDING PREDICTIONS (${report.pending_predictions.length})${c.reset}`);
+    console.log(`${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+    report.pending_predictions.forEach((p, idx) => {
+      console.log(`  ${c.bold}${idx + 1}.${c.reset} ${c.yellow}${p.kickoff_wat}:${c.reset} ${c.bold}${c.cyan}${p.home_team}${c.reset} vs ${c.bold}${c.magenta}${p.away_team}${c.reset} ${c.bold}(${p.selection})${c.reset}`);
+      console.log(`     • ${c.bold}Reason for the prediction:${c.reset} ${p.reason}`);
+      console.log(`     • ${c.bold}Status:${c.reset} ${c.yellow}⏳ PENDING WHISTLE${c.reset}`);
+      console.log('');
+    });
+  }
+
+  // 4. Batch Performance Section
+  const evalRes = await evaluateArchivedBatches();
+  const yestBatches = evalRes.allBatches.filter((b) => b.date === report.date || b.batch_id.includes(report.date.replace(/[^0-9]/g, '')));
+  if (yestBatches.length > 0) {
+    console.log(`\n${c.bold}${c.magenta}📦 YESTERDAY'S 10-ODDS BATCHES BREAKDOWN:${c.reset}`);
+    console.log(`${c.dim}─────────────────────────────────────────────────────────────────────────────${c.reset}`);
+    yestBatches.forEach((b) => {
+      const badge = b.status === 'WON' ? `${c.green}✅ SUCCESS` : b.status === 'LOST' ? `${c.red}❌ FAILED` : `${c.yellow}⏳ PENDING`;
+      console.log(`  • ${c.bold}${b.batch_id}${c.reset} — ${b.batch_title} [${badge}${c.reset}]`);
+      console.log(`    Combined Odds: ${c.yellow}${b.total_odds}x${c.reset} | Hit Rate: ${b.legs_won}/${b.legs.length} Legs Won`);
+    });
+  }
+
+  await promptUser('\nPress [ENTER] to return to Main Menu...');
+}
+
+/**
+ * Historical Daily Accuracy Audit & Date Inspector
+ */
+async function runPredictionHistoryByDateInteractive() {
+  console.log(`\n${c.bold}${c.green}📅 HISTORICAL PREDICTION ACCURACY & AUDIT TRAIL ACROSS ALL RECORDED DATES${c.reset}`);
+  const summaries = getHistoricalPerformanceByDate();
+
+  console.log(`
+${c.bold}┌────────────┬─────────────┬────────────┬─────────┬─────────┬─────────────────┐
+│ Date       │ Predictions │ Successful │ Failed  │ Pending │ Verified Acc %  │
+├────────────┼─────────────┼────────────┼─────────┼─────────┼─────────────────┤${c.reset}`);
+
+  summaries.forEach((s) => {
+    const dStr = s.date.padEnd(10);
+    const totStr = String(s.total_predictions).padStart(11);
+    const succStr = String(s.successful_predictions).padStart(10);
+    const failStr = String(s.failed_predictions).padStart(7);
+    const pendStr = String(s.pending_predictions).padStart(7);
+    const accStr = `${s.accuracy_pct.toFixed(1)}%`.padStart(15);
+
+    console.log(`│ ${c.cyan}${dStr}${c.reset} │ ${totStr} │ ${c.green}${succStr}${c.reset} │ ${c.red}${failStr}${c.reset} │ ${c.yellow}${pendStr}${c.reset} │ ${c.emerald}${accStr}${c.reset} │`);
+  });
+
+  console.log(`${c.bold}└────────────┴─────────────┴────────────┴─────────┴─────────┴─────────────────┘${c.reset}\n`);
+
+  const dateInput = await promptUser(`  👉 Enter Date (YYYY-MM-DD) to inspect all predictions, or 'b' for Back: `);
+  if (!dateInput || dateInput.toLowerCase() === 'b') return;
+
+  const targetDate = dateInput.trim();
+  console.log(`\n${c.bold}EVALUATING PREDICTIONS FOR ${targetDate}...${c.reset}`);
+  const report = await evaluatePredictionsForDate(targetDate);
+
+  console.log(`\n${c.bold}PREDICTION PERFORMANCE FOR ${targetDate}:${c.reset}`);
+  console.log(`  • Total: ${report.total} | Successful: ${c.green}${report.successful}${c.reset} | Failed: ${c.red}${report.failed}${c.reset} | Pending: ${c.yellow}${report.pending}${c.reset} | Accuracy: ${c.emerald}${report.accuracy_pct.toFixed(1)}%${c.reset}\n`);
+
+  if (report.successful_predictions.length > 0) {
+    console.log(`${c.bold}${c.green}✅ SUCCESSFUL PREDICTIONS:${c.reset}`);
+    report.successful_predictions.forEach((p, idx) => {
+      console.log(`  ${idx + 1}. ${p.kickoff_wat}: ${p.home_team} vs ${p.away_team} (${p.selection})`);
+      console.log(`     Reason: ${p.reason}`);
+      console.log(`     Actual Score: ${p.actual_final_score} [SUCCESS] (Odds: ${p.odds}x)\n`);
+    });
+  }
+
+  if (report.failed_predictions.length > 0) {
+    console.log(`${c.bold}${c.red}❌ FAILED PREDICTIONS:${c.reset}`);
+    report.failed_predictions.forEach((p, idx) => {
+      console.log(`  ${idx + 1}. ${p.kickoff_wat}: ${p.home_team} vs ${p.away_team} (${p.selection})`);
+      console.log(`     Reason: ${p.reason}`);
+      console.log(`     Actual Score: ${p.actual_final_score} [FAILED] (Odds: ${p.odds}x)\n`);
+    });
+  }
+
+  await promptUser('Press [ENTER] to return to Main Menu...');
 }
 
 /**
@@ -523,22 +557,25 @@ ${c.bold}┌──────────────────────�
 └─────────────────────────────────────────────────────────────────────────────┘${c.reset}
   ${c.bold}${c.green}[1]${c.reset} 🔥 View Today's Predictions & 10-Odds Batches
   ${c.bold}${c.green}[2]${c.reset} 🏆 View Yesterday's Predictions Outcome & Success Indicators
-  ${c.bold}${c.green}[3]${c.reset} 🔍 Direct Match Forensics, Squad & Last 5 Matches Lookup
-  ${c.bold}${c.green}[4]${c.reset} ⚡ Run Temporal Walk-Forward Out-of-Sample Backtest
-  ${c.bold}${c.green}[5]${c.reset} 🌐 View Global Data Lake Coverage Audit (All Football Leagues)
-  ${c.bold}${c.green}[6]${c.reset} 📰 ESPN Breaking News & Latest Football Happenings
+  ${c.bold}${c.green}[3]${c.reset} 📅 Historical Prediction Accuracy & Audit Trail (By Date)
+  ${c.bold}${c.green}[4]${c.reset} 🔍 Direct Match Forensics, Squad & Last 5 Matches Lookup
+  ${c.bold}${c.green}[5]${c.reset} ⚡ Run Temporal Walk-Forward Out-of-Sample Backtest
+  ${c.bold}${c.green}[6]${c.reset} 🌐 View Global Data Lake Coverage Audit (All Football Leagues)
+  ${c.bold}${c.green}[7]${c.reset} 📰 ESPN Breaking News & Latest Football Happenings
   ${c.bold}${c.red}[0]${c.reset} 🚪 Exit
 `);
 
-    const choice = await promptUser(`  ${c.bold}👉 Select an option (1, 2, 3, 4, 5, 6, 0): ${c.reset}`);
+    const choice = await promptUser(`  ${c.bold}👉 Select an option (1, 2, 3, 4, 5, 6, 7, 0): ${c.reset}`);
 
     if (choice === '1') {
       await runTodayBatchesInteractive();
     } else if (choice === '2') {
       await runYesterdayOutcomeInteractive();
     } else if (choice === '3') {
-      await runCustomMatchupInteractive();
+      await runPredictionHistoryByDateInteractive();
     } else if (choice === '4') {
+      await runCustomMatchupInteractive();
+    } else if (choice === '5') {
       console.log(`\n${c.bold}RUNNING TEMPORAL WALK-FORWARD OOS BACKTEST (ZERO LEAKAGE)...${c.reset}\n`);
       const res = runWalkForwardBacktest(RAW_MATCH_RECORDS, 'all', 'all');
       console.log(`  • Evaluated Matches:        ${c.cyan}${res.total_matches}${c.reset}`);
@@ -547,7 +584,7 @@ ${c.bold}┌──────────────────────�
       console.log(`  • 1X2 Match Outcome Acc:    ${res.overall.result_accuracy.toFixed(1)}% (Log-Loss: ${res.overall.result_log_loss.toFixed(3)})`);
       console.log(`  • Shots Regression MAE:     ${res.overall.shots_mae.toFixed(2)} shots`);
       await promptUser('\nPress [ENTER] to return to Main Menu...');
-    } else if (choice === '5') {
+    } else if (choice === '6') {
       console.log(`\n${c.bold}SYNCING GLOBAL HISTORICAL DATA LAKE ACROSS ALL FOOTBALL LEAGUES FROM ESPN...${c.reset}`);
       const syncRes = await syncEspnHistoricalDataset(['2024', '2025', '2026']);
       console.log(`  • ESPN Endpoints Queried:   ${syncRes.leaguesQueried.length} Leagues across ${syncRes.seasonsQueried.join(', ')}`);
@@ -558,13 +595,13 @@ ${c.bold}┌──────────────────────�
       console.log(`  • Matches with Full xG:    ${c.green}${cov.matches_with_xg}${c.reset} (${Math.round((cov.matches_with_xg / Math.max(1, cov.played_fixtures)) * 100)}% coverage)`);
       console.log(`  • Date Range:              ${cov.date_range.min_date} to ${cov.date_range.max_date}`);
       await promptUser('\nPress [ENTER] to return to Main Menu...');
-    } else if (choice === '6') {
+    } else if (choice === '7') {
       await runNewsInteractive();
     } else if (choice === '0' || choice.toLowerCase() === 'q' || choice.toLowerCase() === 'exit') {
       console.log(`\n${c.green}Thank you for using FootyPredict ML CLI. Goodbye!${c.reset}\n`);
       break;
     } else {
-      console.log(`${c.red}Invalid option. Please choose from 1, 2, 3, 4, 5, 6, or 0.${c.reset}`);
+      console.log(`${c.red}Invalid option. Please choose from 1, 2, 3, 4, 5, 6, 7, or 0.${c.reset}`);
     }
   }
 }

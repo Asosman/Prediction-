@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { PredictionsDashboard } from './components/PredictionsDashboard';
+import { PredictionHistoryStudio } from './components/PredictionHistoryStudio';
 import { MultiHorizonFormStudio } from './components/MultiHorizonFormStudio';
 import { BatchPredictionStudio } from './components/BatchPredictionStudio';
 import { DataCoverageStudio } from './components/DataCoverageStudio';
@@ -26,6 +27,7 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === 'predictions' && <PredictionsDashboard />}
+        {activeTab === 'history' && <PredictionHistoryStudio />}
         {activeTab === 'form_tracker' && <MultiHorizonFormStudio />}
         {activeTab === 'batch' && <BatchPredictionStudio />}
         {activeTab === 'data_lake' && <DataCoverageStudio />}
