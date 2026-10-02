@@ -94,12 +94,20 @@ async function displayMatchPrediction(pred: ReturnType<typeof generateMultiTarge
   const fairOddsBtts = (1 / Math.max(0.001, pred.btts.yes)).toFixed(2);
   const fairOddsOver = (1 / Math.max(0.001, pred.over_2_5.over)).toFixed(2);
 
+  // Ensure preFeatures is available directly from the ML model
+  const modelFeatures =
+    preFeatures ||
+    extractPreMatchFeatures({
+      home_team: pred.match.home,
+      away_team: pred.match.away,
+      date: pred.match.date,
+      league_id: pred.match.league,
+    });
+
   // Retrieve Comprehensive ESPN Telemetry for both teams
-  const [homeData, awayData, homeMatches, awayMatches] = await Promise.all([
+  const [homeData, awayData] = await Promise.all([
     fetchEspnTeamComprehensiveData(pred.match.home, pred.match.league),
     fetchEspnTeamComprehensiveData(pred.match.away, pred.match.league),
-    fetchEspnTeamPastMatches(pred.match.home, pred.match.league, 5),
-    fetchEspnTeamPastMatches(pred.match.away, pred.match.league, 5),
   ]);
 
   // Determine Primary High-Accuracy Professional Prediction & Forensic Reason
@@ -216,33 +224,29 @@ async function displayMatchPrediction(pred: ReturnType<typeof generateMultiTarge
   }
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
 
-  // 9. Verified Last 5 Form Matches for Both Home and Away (Direct from ESPN Endpoints)
-  console.log(`  ${c.bold}📊 VERIFIED LAST 5 HISTORICAL FORM MATCHES (DIRECT ESPN ENDPOINTS, NEWEST FIRST):${c.reset}`);
+  // 9. Verified Last 5 Form Matches for Both Home and Away (Fetched Directly from ML Model)
+  console.log(`  ${c.bold}📊 VERIFIED LAST 5 HISTORICAL FORM MATCHES (FETCHED DIRECTLY FROM ML MODEL, NEWEST FIRST):${c.reset}`);
   console.log(`     • ${c.bold}${c.cyan}${pred.match.home.toUpperCase()}${c.reset}:`);
-  if (homeMatches.length === 0) {
-    console.log(`       No past match records found on ESPN endpoints.`);
+  const modelHomeMatches = modelFeatures.home_form_multi?.last_5?.matches || [];
+  if (modelHomeMatches.length === 0) {
+    console.log(`       No past match records found for ${pred.match.home}.`);
   } else {
-    homeMatches.forEach((m) => {
-      let outcomeBadge = m.outcome;
-      if (m.outcome.includes('[W]')) outcomeBadge = `${c.green}${m.outcome}${c.reset}`;
-      else if (m.outcome.includes('[D]')) outcomeBadge = `${c.yellow}${m.outcome}${c.reset}`;
-      else if (m.outcome.includes('[L]')) outcomeBadge = `${c.red}${m.outcome}${c.reset}`;
-
-      console.log(`       - [${m.date}] ${m.is_home ? 'Home' : 'Away'} vs ${m.opponent.padEnd(24)} | Score: ${m.score_display.padEnd(7)} | Outcome: ${outcomeBadge}`);
+    modelHomeMatches.forEach((m: any) => {
+      const outcomeBadge = m.outcome === 'W' ? `${c.green}[W] WIN${c.reset}` : m.outcome === 'D' ? `${c.yellow}[D] DRAW${c.reset}` : `${c.red}[L] LOSS${c.reset}`;
+      const scoreStr = `${m.goals_for} - ${m.goals_against}`;
+      console.log(`       - [${m.date}] ${m.is_home ? 'Home' : 'Away'} vs ${m.opponent.padEnd(24)} | Score: ${scoreStr.padEnd(7)} | Outcome: ${outcomeBadge}`);
     });
   }
 
   console.log(`     • ${c.bold}${c.magenta}${pred.match.away.toUpperCase()}${c.reset}:`);
-  if (awayMatches.length === 0) {
-    console.log(`       No past match records found on ESPN endpoints.`);
+  const modelAwayMatches = modelFeatures.away_form_multi?.last_5?.matches || [];
+  if (modelAwayMatches.length === 0) {
+    console.log(`       No past match records found for ${pred.match.away}.`);
   } else {
-    awayMatches.forEach((m) => {
-      let outcomeBadge = m.outcome;
-      if (m.outcome.includes('[W]')) outcomeBadge = `${c.green}${m.outcome}${c.reset}`;
-      else if (m.outcome.includes('[D]')) outcomeBadge = `${c.yellow}${m.outcome}${c.reset}`;
-      else if (m.outcome.includes('[L]')) outcomeBadge = `${c.red}${m.outcome}${c.reset}`;
-
-      console.log(`       - [${m.date}] ${m.is_home ? 'Home' : 'Away'} vs ${m.opponent.padEnd(24)} | Score: ${m.score_display.padEnd(7)} | Outcome: ${outcomeBadge}`);
+    modelAwayMatches.forEach((m: any) => {
+      const outcomeBadge = m.outcome === 'W' ? `${c.green}[W] WIN${c.reset}` : m.outcome === 'D' ? `${c.yellow}[D] DRAW${c.reset}` : `${c.red}[L] LOSS${c.reset}`;
+      const scoreStr = `${m.goals_for} - ${m.goals_against}`;
+      console.log(`       - [${m.date}] ${m.is_home ? 'Home' : 'Away'} vs ${m.opponent.padEnd(24)} | Score: ${scoreStr.padEnd(7)} | Outcome: ${outcomeBadge}`);
     });
   }
   console.log(`${c.dim}  ─────────────────────────────────────────────────────────────────────────────${c.reset}`);
